@@ -1,1 +1,1 @@
-{"versionCode":3,"versionName":"1.0.2","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.2/xiaozhi-v1.0.2.apk","changelog":"移除激活码验证，打开即用；直接连接服务器，无需激活步骤"}
+{"versionCode":4,"versionName":"1.0.3","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.3/xiaozhi-v1.0.3.apk","changelog":"修复设备ID格式，正确获取OTA配置；修复WebSocket连接断开问题"}
