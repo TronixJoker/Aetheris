@@ -1,1 +1,1 @@
-{"versionCode":6,"versionName":"1.0.5","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.5/xiaozhi-v1.0.5.apk","changelog":"修复设备类型标识，服务器正确识别；修复固件版本获取；添加中文语言参数"}
+{"versionCode":7,"versionName":"1.0.6","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.6/xiaozhi-v1.0.6.apk","changelog":"修复激活页面图标错误；修复WebSocket断开后重连失败问题；代码优化清理"}
