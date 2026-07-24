@@ -1,1 +1,1 @@
-{"versionCode":13,"versionName":"1.0.12","downloadUrl":"https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.12.apk","changelog":"修复应用内更新无法安装的问题：新增安装权限引导和重试机制，下载卡死时自动切换备用CDN源，检查更新支持多源轮询"}
+{"versionCode": 14, "versionName": "1.0.13", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.13.apk", "changelog": "修复OTA请求失败问题：增加详细错误信息显示，增加重试次数到5次，新增跳过OTA直接连接功能，修复应用内更新权限引导"}
