@@ -1,1 +1,1 @@
-{"versionCode":9,"versionName":"1.0.8","downloadUrl":"https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.8.apk","changelog":"使用jsDelivr CDN加速更新检查和下载；增加超时时间和自动重试(最多3次)"}
+{"versionCode":10,"versionName":"1.0.9","downloadUrl":"https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.9.apk","changelog":"修复MCP协议消息处理：服务器发送initialize和tools/list请求时APP现在会正确响应，解决固件版本信息未找到的问题"}
