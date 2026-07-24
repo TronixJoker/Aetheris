@@ -1,1 +1,1 @@
-{"versionCode":11,"versionName":"1.0.10","downloadUrl":"https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.10.apk","changelog":"优化下载进度条：减少线程切换避免卡顿，显示已下载大小(MB)，支持未知文件大小时显示已下载量"}
+{"versionCode":12,"versionName":"1.0.11","downloadUrl":"https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.11.apk","changelog":"修复OTA请求失败导致固件错误：添加OTA重试逻辑(3次)，OTA失败时显示错误和重试按钮，添加重置设备身份功能"}
