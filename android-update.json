@@ -1,1 +1,1 @@
-{"versionCode":4,"versionName":"1.0.3","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.3/xiaozhi-v1.0.3.apk","changelog":"修复设备ID格式，正确获取OTA配置；修复WebSocket连接断开问题"}
+{"versionCode":5,"versionName":"1.0.4","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.4/xiaozhi-v1.0.4.apk","changelog":"修复OTA和WebSocket服务器地址；修复设备ID为MAC地址格式"}
