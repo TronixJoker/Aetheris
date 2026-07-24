@@ -1,1 +1,1 @@
-{"versionCode":7,"versionName":"1.0.6","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.6/xiaozhi-v1.0.6.apk","changelog":"修复激活页面图标错误；修复WebSocket断开后重连失败问题；代码优化清理"}
+{"versionCode":8,"versionName":"1.0.7","downloadUrl":"https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.0.7/xiaozhi-v1.0.7.apk","changelog":"修复OTA请求中elf_sha256字段错误(deviceId→hmacKey)；初始化时生成HMAC密钥"}
