@@ -1,1 +1,1 @@
-{"versionCode": 14, "versionName": "1.0.13", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.13.apk", "changelog": "修复OTA请求失败问题：增加详细错误信息显示，增加重试次数到5次，新增跳过OTA直接连接功能，修复应用内更新权限引导"}
+{"versionCode": 15, "versionName": "1.0.14", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.14.apk", "changelog": "全面优化用户体验：OTA失败可直接跳过使用，点按钮有明确状态提示，连接断开显示原因，增加详细操作日志，修复应用内更新安装权限问题"}
