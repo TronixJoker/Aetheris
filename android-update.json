@@ -1,1 +1,1 @@
-{"versionCode": 17, "versionName": "1.0.16", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.16.apk", "changelog": "彻底解决OTA卡顿：启动立即连接服务器(1秒内)，OTA改为后台静默执行不再等待；OTA重试从5次减到2次；OTA成功拿到新配置后自动重连；打开APP即可使用语音功能"}
+{"versionCode": 18, "versionName": "1.0.17", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.17.apk", "changelog": "修复检查更新总是显示旧版本的问题：改用raw.githubusercontent.com作为主更新源(无CDN缓存,永远最新)；jsdelivr镜像降级为备用；已强制刷新所有CDN缓存"}
