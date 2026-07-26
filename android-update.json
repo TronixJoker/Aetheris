@@ -1,1 +1,1 @@
-{"versionCode": 18, "versionName": "1.0.17", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.17.apk", "changelog": "修复检查更新总是显示旧版本的问题：改用raw.githubusercontent.com作为主更新源(无CDN缓存,永远最新)；jsdelivr镜像降级为备用；已强制刷新所有CDN缓存"}
+{"versionCode": 19, "versionName": "1.0.18", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.18.apk", "changelog": "修复验证码一直刷新停不下来的问题：正确区分设备未激活(返回验证码)和已激活(返回配置)两种状态；未激活时不再循环重连；主界面直接显示验证码和\"我已绑定，重新检查\"按钮，绑定后点按钮即可激活"}
