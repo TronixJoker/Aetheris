@@ -1,1 +1,1 @@
-{"versionCode": 19, "versionName": "1.0.18", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.18.apk", "changelog": "修复验证码一直刷新停不下来的问题：正确区分设备未激活(返回验证码)和已激活(返回配置)两种状态；未激活时不再循环重连；主界面直接显示验证码和\"我已绑定，重新检查\"按钮，绑定后点按钮即可激活"}
+{"versionCode": 20, "versionName": "1.0.19", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.19.apk", "changelog": "大幅优化检查更新速度：改为并行请求所有更新源(之前是串行)；检查超时从30秒缩短到8秒；国内优先用jsdelivr镜像；任一源返回即可显示结果，不再卡住"}
