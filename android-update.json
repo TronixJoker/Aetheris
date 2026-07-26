@@ -1,1 +1,1 @@
-{"versionCode": 20, "versionName": "1.0.19", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.0.19.apk", "changelog": "大幅优化检查更新速度：改为并行请求所有更新源(之前是串行)；检查超时从30秒缩短到8秒；国内优先用jsdelivr镜像；任一源返回即可显示结果，不再卡住"}
+{"versionCode": 22, "versionName": "1.1.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.1.1.apk", "changelog": "新增桌面宠物悬浮窗：可拖动、点击唤醒语音、长按隐藏；新增后台持续运行（前台服务+常驻通知）；新增命令执行功能：AI可通过MCP协议触发打开应用/发短信/拨号/设闹钟/定时器/打开网页/打开系统设置；更换应用桌面图标为新版小智图标；通知栏小图标同步更新"}
