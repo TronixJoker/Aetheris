@@ -1,1 +1,1 @@
-{"versionCode": 33, "versionName": "1.2.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.2.apk", "changelog": "修复白色机器人与背景融合问题：1) 给2D机器人图片添加深色轮廓线和阴影效果，使其在浅色背景上清晰可见；2) 优化面部屏幕、眼睛、微笑的对比度；3) 身体、耳朵、天线、手臂、胸口芯片均添加轮廓和投影"}
+{"versionCode": 34, "versionName": "1.2.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.3.apk", "changelog": "放大APP内2D机器人图片显示尺寸：从180dp增加到280dp，让机器人更醒目"}
