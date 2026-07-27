@@ -1,1 +1,1 @@
-{"versionCode": 32, "versionName": "1.2.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.1.apk", "changelog": "APP界面更新为白色卡通机器人2D图片：1) 替换ic_pet.png为可爱白色卡通机器人形象(圆润头部+黑色屏幕脸+开心弯眼微笑+两侧耳朵+天线+椭圆形身体+手臂+胸口芯片电路+散热孔+底座)；2) 桌面宠物继续保持3D模型显示；3) 图片尺寸512x512，透明背景"}
+{"versionCode": 33, "versionName": "1.2.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.2.apk", "changelog": "修复白色机器人与背景融合问题：1) 给2D机器人图片添加深色轮廓线和阴影效果，使其在浅色背景上清晰可见；2) 优化面部屏幕、眼睛、微笑的对比度；3) 身体、耳朵、天线、手臂、胸口芯片均添加轮廓和投影"}
