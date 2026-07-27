@@ -1,1 +1,1 @@
-{"versionCode": 31, "versionName": "1.2.0", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.0.apk", "changelog": "APP界面与桌面宠物分离显示：1) APP主界面EmotionDisplay改用2D图片(ic_pet.png)显示小智形象，更清晰稳定；2) 桌面宠物悬浮窗保持3D卡通白色机器人模型不变；3) 移除APP内的3D OpenGL渲染，降低功耗和内存占用"}
+{"versionCode": 32, "versionName": "1.2.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.1.apk", "changelog": "APP界面更新为白色卡通机器人2D图片：1) 替换ic_pet.png为可爱白色卡通机器人形象(圆润头部+黑色屏幕脸+开心弯眼微笑+两侧耳朵+天线+椭圆形身体+手臂+胸口芯片电路+散热孔+底座)；2) 桌面宠物继续保持3D模型显示；3) 图片尺寸512x512，透明背景"}
