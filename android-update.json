@@ -1,1 +1,1 @@
-{"versionCode": 34, "versionName": "1.2.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.3.apk", "changelog": "放大APP内2D机器人图片显示尺寸：从180dp增加到280dp，让机器人更醒目"}
+{"versionCode": 35, "versionName": "1.2.4", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.4.apk", "changelog": "重写2D机器人图片(1024x1024高清)：1) 更圆润的球形头部+椭圆形身体；2) 更大的耳朵+天线+球形顶端；3) 完整的双手臂(带有球形手)；4) 胸口大芯片(带电路纹路)；5) 4道散热孔；6) 椭圆底座；7) 所有部件添加深色轮廓+柔和投影；8) 头部添加高光增加立体感"}
