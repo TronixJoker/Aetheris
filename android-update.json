@@ -1,1 +1,1 @@
-{"versionCode": 36, "versionName": "1.2.5", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.5.apk", "changelog": "APP内2D图片改为从桌面宠物3D模型渲染：1) 加载同一个robot_model.obj模型(20988顶点/41896面)；2) 软件渲染正面视角(略带俯视)；3) 根据法线计算光照强度；4) 按深度排序绘制(从远到近)；5) 添加深色轮廓和柔和投影；6) APP内显示的机器人与桌面宠物完全一致"}
+{"versionCode": 37, "versionName": "1.2.6", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.6.apk", "changelog": "1. APP内2D图片替换为用户提供的机器人照片（已去除背景）；2. 桌面宠物3D模型替换为用户上传的3Dxiaozhi模型；3. 清理仓库旧版本APK，只保留最新5个版本"}
