@@ -1,1 +1,1 @@
-{"versionCode": 42, "versionName": "1.3.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.3.1.apk", "changelog": "1. 面部表情精确定位到黑色屏幕中心(0.489w, 0.244h)，确保居中显示；2. 新增2D肢体动作：头部独立摇摆（以屏幕中心为轴心）、左右手臂摆动（灰色线条+圆点手部）；3. 按设备状态切换动作：说话时头部左右摆+双臂手势、聆听时头部微摆+双臂轻抬、连接时头歪+双臂抬起、待机时静止"}
+{"versionCode": 43, "versionName": "1.3.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.3.2.apk", "changelog": "1. 删除不合适的手臂绘制代码；2. 面部表情精确定位到黑色屏幕核心区域中心(0.497w, 0.254h)，确保眼睛和嘴巴居中显示在脸部屏幕内；3. 保留头部摇摆肢体动作（以屏幕中心为轴心）"}
