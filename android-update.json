@@ -1,1 +1,1 @@
-{"versionCode": 39, "versionName": "1.2.8", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.8.apk", "changelog": "1. 3D桌面宠物新增肢体动作动画：头部点头/转头、左右臂抬起/摆动/摸头/挥手，按设备状态（聆听/说话/思考/待机）切换；2. 2D图片新增身体摇摆、上下浮动、抖动等肢体动作；3. 同步更新版本号至1.2.8"}
+{"versionCode": 40, "versionName": "1.2.9", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.9.apk", "changelog": "1. 修复3D模型配色：头部正面为黑色屏幕、躯干正面亮白、手臂灰白、底座灰白，对齐2D参考图冷灰白机器人；2. 修复2D表情对位：面部屏幕中心上移至y=0.25h，眼睛/嘴巴精确对齐黑色屏幕区域"}
