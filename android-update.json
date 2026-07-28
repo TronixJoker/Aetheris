@@ -1,1 +1,1 @@
-{"versionCode": 37, "versionName": "1.2.6", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.6.apk", "changelog": "1. APP内2D图片替换为用户提供的机器人照片（已去除背景）；2. 桌面宠物3D模型替换为用户上传的3Dxiaozhi模型；3. 清理仓库旧版本APK，只保留最新5个版本"}
+{"versionCode": 39, "versionName": "1.2.8", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.2.8.apk", "changelog": "1. 3D桌面宠物新增肢体动作动画：头部点头/转头、左右臂抬起/摆动/摸头/挥手，按设备状态（聆听/说话/思考/待机）切换；2. 2D图片新增身体摇摆、上下浮动、抖动等肢体动作；3. 同步更新版本号至1.2.8"}
