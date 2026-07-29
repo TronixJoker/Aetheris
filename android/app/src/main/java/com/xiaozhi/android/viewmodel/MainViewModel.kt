@@ -328,7 +328,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     put("tools", buildJsonArray {
                         add(buildJsonObject {
                             put("name", "get_weather")
-                            put("description", "【查询天气】当用户问天气、气温、下雨、穿什么衣服、是否需要带伞等问题时必须调用此工具。例如：今天天气怎么样、北京天气、明天会下雨吗。Args: `city` - 城市名称（如北京、上海、深圳），不填则查询默认天气")
+                            put("description", "【查询天气】当用户问天气、气温、下雨、穿什么衣服、是否需要带伞等问题时必须调用此工具。例如：今天天气怎么样、北京天气、明天会下雨吗。结果直接语音播报。Args: `city` - 城市名称（如北京、上海、深圳），不填则查询默认天气")
                             put("inputSchema", buildJsonObject {
                                 put("type", "object")
                                 put("properties", buildJsonObject {
@@ -371,6 +371,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     put("query", buildJsonObject { put("type", "string") })
                                 })
                                 put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "search_web")
+                            put("description", "【联网搜索】当用户问知识性问题、需要联网查询信息时调用。多源并行搜索（DuckDuckGo+Wikipedia百科），结果直接语音播报，不跳转页面。例如：量子力学是什么、红烧肉怎么做、珠穆朗玛峰有多高。Args: `query` - 搜索关键词")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "search_video")
+                            put("description", "【搜索视频】当用户要求找视频、搜视频、看B站时调用。搜索B站视频，返回标题和UP主，结果直接语音播报。例如：搜一下猫猫视频、找B站上的编程教程。Args: `query` - 视频关键词")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "get_stock")
+                            put("description", "【查询股票】当用户问股票行情、基金净值、股价时调用。支持股票代码（如600519）或股票名称（如贵州茅台）。结果直接语音播报。例如：贵州茅台股价、600519行情、腾讯股票。Args: `query` - 股票代码或名称")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "translate")
+                            put("description", "【翻译】当用户要求翻译文本时调用。支持中英互译及其他多语言翻译。例如：翻译你好、把苹果翻译成英语、翻译成日语。Args: `text` - 要翻译的文本; `to` - 目标语言代码(en/ja/ko/fr/de/zh)")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("text", buildJsonObject { put("type", "string") })
+                                    put("to", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("text") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "get_news")
+                            put("description", "【获取新闻】当用户要求听新闻、看新闻、今天有什么新闻时调用。聚合百度新闻最新资讯，结果直接语音播报。例如：今天有什么新闻、科技新闻、体育新闻。Args: `query` - 新闻关键词(可选，为空则获取热点)")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray {})
                             })
                         })
                         add(buildJsonObject {
@@ -458,7 +514,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     Log.i(TAG, "Tool call: $toolName, args=$arguments")
                     addLog("🔧 执行命令: $toolName")
-                    val execResult = commandExecutor.execute(toolName, arguments)
+                    val execResult = commandExecutor.execute(toolName, arguments) { asyncResult ->
+                        // 异步结果回调：将 API 查询结果通过 sendSystemText 发给 AI 语音播报
+                        Log.d(TAG, "Async result for $toolName: ${asyncResult.take(80)}")
+                        addLog("→ $asyncResult")
+                        webSocketManager.sendSystemText(asyncResult)
+                    }
                     addLog("→ $execResult")
                     buildJsonObject {
                         put("content", buildJsonArray {
@@ -804,22 +865,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (isSearchQuery(text)) {
             val query = extractSearchQuery(text)
             addLog("🔍 本地解析搜索: $query")
-            
+
             // 判断用户是否明确要求跳转页面
             val wantBrowser = containsAny(text, "打开网页", "跳转", "浏览器", "链接", "网址", "网站", "页面")
-            
+
             if (wantBrowser) {
-                // 用户明确要求跳转 → 打开浏览器
                 val result = commandExecutor.search(query)
                 addLog("→ $result")
             } else {
-                // 默认：抓取搜索结果摘要，让 AI 语音播报
                 viewModelScope.launch {
                     addLog("🌐 正在联网搜索...")
                     val summary = commandExecutor.searchWeb(query)
                     if (summary.isNotBlank()) {
                         addLog("📖 搜索结果：$summary")
-                        // 将结果发送给 AI 服务器，让它用语音播报
                         webSocketManager.sendSystemText("根据搜索结果：$summary")
                     } else {
                         addLog("⚠️ 搜索失败，建议您手动搜索")
@@ -830,7 +888,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 1. 设置闹钟：识别 "设闹钟"、"闹钟"、"叫醒"、"起床" + 时间
+        // 1. 查新闻
+        if (containsAny(text, "新闻", "头条", "热点", "资讯")) {
+            val query = text
+                .replace(Regex("""(今天|有什么|最新|最近|看|听|帮我|给我|查一下)?"""), "")
+                .replace(Regex("""(新闻|头条|热点|资讯)"""), "")
+                .trim()
+            addLog("📰 本地解析新闻: ${query.ifBlank { "热点" }}")
+            viewModelScope.launch {
+                val result = commandExecutor.getNews(query)
+                addLog("→ $result")
+                webSocketManager.sendSystemText(result)
+            }
+            return
+        }
+
+        // 2. 查股票
+        if (containsAny(text, "股票", "股价", "行情", "基金", "A股", "涨停", "跌")) {
+            val query = text
+                .replace(Regex("""(帮我|给我|查一下|看一下|查询)?"""), "")
+                .replace(Regex("""(股票|股价|行情|基金|的|了)"""), "")
+                .trim()
+            if (query.isNotEmpty()) {
+                addLog("📈 本地解析股票: $query")
+                viewModelScope.launch {
+                    val result = commandExecutor.getStock(query)
+                    addLog("→ $result")
+                    webSocketManager.sendSystemText(result)
+                }
+                return
+            }
+        }
+
+        // 3. 搜索视频
+        if (containsAny(text, "搜视频", "找视频", "B站", "b站", "bilibili", "看视频")) {
+            val query = text
+                .replace(Regex("""(帮我|给我|搜一下|搜索|找一下|找)?"""), "")
+                .replace(Regex("""(视频|B站|b站|bilibili|的)"""), "")
+                .trim()
+            if (query.isNotEmpty()) {
+                addLog("🎬 本地解析视频搜索: $query")
+                viewModelScope.launch {
+                    val result = commandExecutor.searchVideo(query)
+                    addLog("→ $result")
+                    webSocketManager.sendSystemText(result)
+                }
+                return
+            }
+        }
+
+        // 4. 翻译
+        if (containsAny(text, "翻译", "译成", "翻译成")) {
+            val targetLang = when {
+                text.contains("英语") || text.contains("英文") || text.contains("en") -> "en"
+                text.contains("日语") || text.contains("日文") || text.contains("jp") -> "ja"
+                text.contains("韩语") || text.contains("韩文") || text.contains("ko") -> "ko"
+                text.contains("法语") || text.contains("法文") || text.contains("fr") -> "fr"
+                text.contains("德语") || text.contains("德文") || text.contains("de") -> "de"
+                text.contains("中文") || text.contains("汉语") -> "zh"
+                else -> "en"
+            }
+            val content = text
+                .replace(Regex("""(帮我|给我|请)?"""), "")
+                .replace(Regex("""(翻译|译成|翻译成)"""), "")
+                .replace(Regex("""(英语|英文|日语|日文|韩语|韩文|法语|法文|德语|德文|中文|汉语|en|jp|ko|fr|de)"""), "")
+                .replace(Regex("""(成|为)"""), "")
+                .trim()
+            if (content.isNotEmpty()) {
+                addLog("🌐 本地解析翻译: $content -> $targetLang")
+                viewModelScope.launch {
+                    val result = commandExecutor.translate(content, targetLang)
+                    addLog("→ $result")
+                    webSocketManager.sendSystemText(result)
+                }
+                return
+            }
+        }
+
+        // 5. 设置闹钟
         if (containsAny(text, "闹钟", "设个", "设一", "叫醒", "起床", "提醒我")) {
             parseAlarmFromText(text)?.let { (hour, minute, label) ->
                 addLog("🔔 本地解析闹钟: ${hour}点${minute}分")
@@ -839,7 +974,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 2. 设置定时器：识别 "倒计时"、"N秒"、"N分钟"、"定时器"
+        // 6. 设置定时器
         if (containsAny(text, "倒计时", "定时", "几秒", "秒", "分钟后", "计时器")) {
             parseTimerFromText(text)?.let { (seconds, label) ->
                 addLog("⏱️ 本地解析定时器: ${seconds}秒")
@@ -848,15 +983,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 3. 查天气
+        // 7. 查天气
         if (containsAny(text, "天气", "气温", "下雨", "穿", "带伞", "温度")) {
             val city = extractCity(text)
             addLog("🌤️ 本地解析天气查询: ${city.ifBlank { "默认" }}")
-            val result = commandExecutor.getWeather(city)
-            addLog("→ $result")
+            viewModelScope.launch {
+                val result = commandExecutor.getWeatherVoice(city)
+                addLog("→ $result")
+                webSocketManager.sendSystemText(result)
+            }
+            return
         }
 
-        // 4. 拨号
+        // 8. 拨号
         if (containsAny(text, "打给", "拨打", "打电话", "call")) {
             val number = extractPhoneNumber(text)
             if (number.isNotEmpty()) {
@@ -866,7 +1005,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 5. 发短信
+        // 9. 发短信
         if (containsAny(text, "发短信", "发消息", "告诉")) {
             val match = Regex("""(?:给|跟|发)?([\d]{7,11})""").find(text)
             if (match != null) {
@@ -877,7 +1016,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 6. 播放音乐
+        // 10. 播放音乐
         if (containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
             val query = extractMusicQuery(text)
             if (query.isNotEmpty()) {

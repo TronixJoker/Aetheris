@@ -1,0 +1,447 @@
+package com.xiaozhi.android.control
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.jsoup.Jsoup
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
+
+/**
+ * 多源 API 服务：统一管理所有免费数据源的调用。
+ * 所有 API 均为免费、无需 API Key。
+ *
+ * 数据源列表：
+ * - DuckDuckGo Lite：通用搜索引擎（HTML 抓取）
+ * - Wikipedia：百科知识（REST API，中文版）
+ * - 新浪财经：股票/基金/外汇行情（HTTP 接口）
+ * - B站搜索：视频搜索（HTTP API）
+ * - 韩小韩API：天气查询（免费接口）
+ * - MyMemory：翻译（免费 API）
+ * - 百度新闻：新闻聚合（HTML 抓取）
+ */
+class ApiService {
+    companion object {
+        private const val TAG = "ApiService"
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // ==================== 通用 HTTP 请求工具 ====================
+
+    private fun buildRequest(url: String, extraHeaders: Map<String, String> = emptyMap()): Request {
+        return Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
+            .header("Accept-Language", "zh-CN,zh;q=0.9")
+            .apply { extraHeaders.forEach { (k, v) -> header(k, v) } }
+            .build()
+    }
+
+    private suspend fun httpGet(url: String, extraHeaders: Map<String, String> = emptyMap()): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.newCall(buildRequest(url, extraHeaders)).execute()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "HTTP ${response.code} from $url")
+                    return@withContext ""
+                }
+                response.body?.string() ?: ""
+            } catch (e: Exception) {
+                Log.e(TAG, "HTTP GET failed: ${e.message}")
+                ""
+            }
+        }
+    }
+
+    // ==================== 1. DuckDuckGo 搜索（已有逻辑迁移） ====================
+
+    suspend fun searchDuckDuckGo(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://lite.duckduckgo.com/lite/?q=${URLEncoder.encode(query, "UTF-8")}"
+                val html = httpGet(url)
+                if (html.isBlank()) return@withContext ""
+
+                val doc = Jsoup.parse(html)
+                val results = doc.select("a.result-link")
+                if (results.isNotEmpty()) {
+                    return@withContext results.take(5).map { it.text().trim() }
+                        .filter { it.length > 10 }
+                        .joinToString("\n")
+                        .take(500)
+                }
+
+                // 备用：提取所有有效链接文本
+                val allLinks = doc.select("a[href]")
+                val snippets = allLinks.mapNotNull { link ->
+                    val text = link.text().trim()
+                    if (text.length > 20 && !text.contains("DuckDuckGo", ignoreCase = true)) text else null
+                }.take(5)
+                snippets.joinToString("\n").take(500)
+            } catch (e: Exception) {
+                Log.e(TAG, "DuckDuckGo search failed: ${e.message}")
+                ""
+            }
+        }
+    }
+
+    // ==================== 2. Wikipedia 百科（免费 REST API） ====================
+
+    /**
+     * 搜索 Wikipedia 中文百科，返回摘要。
+     * API: https://zh.wikipedia.org/w/api.php
+     */
+    suspend fun searchWikipedia(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                // 先搜索匹配的条目标题
+                val searchUrl = "https://zh.wikipedia.org/w/api.php?" +
+                    "action=query&list=search&srsearch=${URLEncoder.encode(query, "UTF-8")}" +
+                    "&format=json&srlimit=1&utf8=1"
+                val searchBody = httpGet(searchUrl)
+                if (searchBody.isBlank()) return@withContext ""
+
+                // 解析搜索结果获取标题
+                val titleRegex = Regex(""""title"\s*:\s*"([^"]+)"""")
+                val titleMatch = titleRegex.find(searchBody) ?: return@withContext ""
+                val title = titleMatch.groupValues[1]
+
+                // 获取条目摘要
+                val extractUrl = "https://zh.wikipedia.org/w/api.php?" +
+                    "action=query&prop=extracts&exintro=true&explaintext=true" +
+                    "&titles=${URLEncoder.encode(title, "UTF-8")}&format=json&utf8=1"
+                val extractBody = httpGet(extractUrl)
+                if (extractBody.isBlank()) return@withContext ""
+
+                // 提取 extract 内容（纯文本摘要）
+                val extractRegex = Regex(""""extract"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val extractMatch = extractRegex.find(extractBody)
+                if (extractMatch != null) {
+                    val extract = extractMatch.groupValues[1]
+                        .replace("\\n", "\n")
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\")
+                    "【百科】$title：${extract.take(400)}"
+                } else ""
+            } catch (e: Exception) {
+                Log.e(TAG, "Wikipedia search failed: ${e.message}")
+                ""
+            }
+        }
+    }
+
+    // ==================== 3. 新浪财经股票行情（免费 HTTP 接口） ====================
+
+    /**
+     * 查询股票/基金/外汇行情。
+     * 新浪财经实时接口：https://hq.sinajs.cn/list=code
+     * 股票代码格式：sh600519（沪市）、sz000001（深市）、基金 fu_000001
+     */
+    suspend fun getStock(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                // 智能推断股票代码
+                val codes = inferStockCodes(query)
+                if (codes.isEmpty()) {
+                    // 如果不是代码格式，尝试用关键词搜索
+                    return@withContext searchStockByName(query)
+                }
+
+                val url = "https://hq.sinajs.cn/list=${codes.joinToString(",")}"
+                val body = httpGet(url, mapOf("Referer" to "https://finance.sina.com.cn"))
+                if (body.isBlank()) return@withContext "未获取到股票行情"
+
+                val lines = body.split("\n").filter { it.contains("=") }
+                val results = lines.mapNotNull { line ->
+                    parseSinaStockLine(line)
+                }
+                if (results.isEmpty()) "未找到股票：$query" else results.joinToString("\n")
+            } catch (e: Exception) {
+                Log.e(TAG, "Stock query failed: ${e.message}")
+                "查询股票失败"
+            }
+        }
+    }
+
+    /** 根据用户输入推断股票代码 */
+    private fun inferStockCodes(input: String): List<String> {
+        val codes = mutableListOf<String>()
+        val cleaned = input.trim()
+
+        // 纯数字：根据范围推断沪市/深市
+        if (cleaned.matches(Regex("""\d{6}"""))) {
+            codes.add("sh$cleaned")
+            codes.add("sz$cleaned")
+            return codes
+        }
+        // 已带前缀
+        if (cleaned.matches(Regex("""[a-zA-Z]{2}\d{6}"""))) {
+            codes.add(cleaned.lowercase())
+            return codes
+        }
+        // 基金
+        if (cleaned.matches(Regex("""\d{5,6}""")) && cleaned.startsWith("0")) {
+            codes.add("fu_$cleaned")
+        }
+        return codes
+    }
+
+    /** 用关键词搜索股票代码 */
+    private suspend fun searchStockByName(keyword: String): String {
+        return try {
+            val url = "https://suggest3.sinajs.cn/suggest/type=&key=${URLEncoder.encode(keyword, "UTF-8")}&name=suggestdata"
+            val body = httpGet(url, mapOf("Referer" to "https://finance.sina.com.cn"))
+            if (body.isBlank()) return "未找到相关股票"
+
+            // 解析格式：var suggestdata="贵州茅台,11,sh600519,茅台,贵州茅台;..."
+            val matchResult = Regex("""="([^"]+)"""").find(body)
+            if (matchResult != null) {
+                val entries = matchResult.groupValues[1].split(";").filter { it.isNotBlank() }
+                if (entries.isEmpty()) return "未找到相关股票"
+
+                // 取前3条结果，用第一条查询详情
+                val summary = entries.take(3).mapNotNull { entry ->
+                    val parts = entry.split(",")
+                    if (parts.size >= 3) "${parts[0]}(${parts[2]})" else null
+                }.joinToString("、")
+
+                // 查询第一条的实时行情
+                if (entries.isNotEmpty()) {
+                    val firstCode = entries[0].split(",").getOrNull(2) ?: ""
+                    if (firstCode.isNotEmpty()) {
+                        val detail = getStock(firstCode)
+                        if (detail.isNotBlank() && !detail.startsWith("未")) {
+                            return "$detail\n相关：$summary"
+                        }
+                    }
+                }
+                "找到相关股票：$summary"
+            } else "未找到相关股票"
+        } catch (e: Exception) {
+            Log.e(TAG, "Stock search failed: ${e.message}")
+            "搜索股票失败"
+        }
+    }
+
+    /** 解析新浪财经返回的单行数据 */
+    private fun parseSinaStockLine(line: String): String? {
+        return try {
+            val codeMatch = Regex("""var\s+(\w+)="""").find(line) ?: return null
+            val contentMatch = Regex("""="([^"]*)""""").find(line) ?: return null
+            val content = contentMatch.groupValues[1]
+            if (content.isBlank()) return null
+
+            val parts = content.split(",")
+            if (parts.size < 3) return null
+
+            // 新浪格式：名称,今开,昨收,最新价,最高,最低,买入,卖出,...
+            val name = parts[0]
+            val price = if (parts.size > 3) parts[3] else parts[1]
+            val change = if (parts.size > 3) {
+                val current = parts[3].toFloatOrNull() ?: 0f
+                val yesterday = parts[2].toFloatOrNull() ?: 0f
+                if (yesterday > 0) {
+                    val pct = (current - yesterday) / yesterday * 100
+                    String.format("%.2f(%+.2f%%)", current - yesterday, pct)
+                } else ""
+            } else ""
+            String.format("%s 最新价：%s %s", name, price, change)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ==================== 4. B站视频搜索（免费 HTTP API） ====================
+
+    /**
+     * 搜索B站视频，返回标题和UP主信息。
+     * API: https://api.bilibili.com/x/web-interface/search/type
+     */
+    suspend fun searchVideo(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://api.bilibili.com/x/web-interface/search/type?" +
+                    "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
+                    "&page=1&page_size=5"
+                val body = httpGet(url, mapOf("Referer" to "https://www.bilibili.com"))
+                if (body.isBlank()) return@withContext ""
+
+                // 解析 JSON 结果
+                val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val authorRegex = Regex(""""author"\s*:\s*"([^"]+)"""")
+                val playRegex = Regex(""""play"\s*:\s*(\d+)""")
+
+                val titles = titleRegex.findAll(body).take(5).map { it.groupValues[1]
+                    .replace("<em class=\"keyword\">", "")
+                    .replace("</em>", "")
+                    .replace("\\\"", "\"")
+                }.toList()
+                val authors = authorRegex.findAll(body).take(5).map { it.groupValues[1] }.toList()
+
+                if (titles.isEmpty()) return@withContext "未找到相关视频"
+
+                val results = titles.mapIndexed { i, title ->
+                    val author = authors.getOrNull(i) ?: ""
+                    "《$title》" + if (author.isNotEmpty()) " UP主：$author" else ""
+                }.joinToString("\n")
+                "【B站视频】\n$results"
+            } catch (e: Exception) {
+                Log.e(TAG, "Bilibili search failed: ${e.message}")
+                ""
+            }
+        }
+    }
+
+    // ==================== 5. 天气查询（免费 API） ====================
+
+    /**
+     * 查询天气。使用 wttr.in（免费天气服务，无需Key）。
+     * 格式简洁，适合语音播报。
+     */
+    suspend fun getWeather(city: String): String {
+        if (city.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                // wttr.in 免费天气 API，返回简洁文本格式
+                val url = "https://wttr.in/${URLEncoder.encode(city, "UTF-8")}?format=%l:+%c+%t+%h+%w+%p&lang=zh"
+                val body = httpGet(url)
+                if (body.isNotBlank() && !body.contains("ERROR") && !body.contains("Unknown")) {
+                    "【天气】$body"
+                } else {
+                    // 备用：尝试中文天气数据
+                    getWeatherFallback(city)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Weather query failed: ${e.message}")
+                getWeatherFallback(city)
+            }
+        }
+    }
+
+    private suspend fun getWeatherFallback(city: String): String {
+        return try {
+            // 备用方案：百度搜索天气 HTML 抓取
+            val url = "https://www.baidu.com/s?wd=${URLEncoder.encode("$city 天气", "UTF-8")}"
+            val html = httpGet(url)
+            if (html.isBlank()) return ""
+
+            val doc = Jsoup.parse(html)
+            // 百度天气卡片通常在 class="op_weather4_two49" 等容器中
+            val weatherText = doc.select(".op_weather4_two49, .weather-icon, .today_weather").text()
+            if (weatherText.isNotBlank()) {
+                "【天气】$city $weatherText"
+            } else ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Weather fallback failed: ${e.message}")
+            ""
+        }
+    }
+
+    // ==================== 6. 翻译（MyMemory 免费 API） ====================
+
+    /**
+     * 翻译文本。使用 MyMemory 免费 API（每天5000字）。
+     * @param text 要翻译的文本
+     * @param to 目标语言代码（如 en、ja、ko、fr）
+     */
+    suspend fun translate(text: String, to: String): String {
+        if (text.isBlank()) return ""
+        val targetLang = to.trim().lowercase()
+        // 默认中译英，如果目标语言是中文则英译中
+        val sourceLang = if (targetLang == "zh" || targetLang == "zh-cn") "en" else "zh"
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://api.mymemory.translated.net/get?" +
+                    "q=${URLEncoder.encode(text, "UTF-8")}" +
+                    "&langpair=$sourceLang|$targetLang"
+                val body = httpGet(url)
+                if (body.isBlank()) return@withContext "翻译失败"
+
+                // 解析翻译结果
+                val translatedRegex = Regex(""""translatedText"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val match = translatedRegex.find(body)
+                if (match != null) {
+                    val translated = match.groupValues[1]
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\")
+                    "【翻译】$text → $translated"
+                } else "翻译失败"
+            } catch (e: Exception) {
+                Log.e(TAG, "Translate failed: ${e.message}")
+                "翻译失败"
+            }
+        }
+    }
+
+    // ==================== 7. 新闻聚合（百度新闻 HTML 抓取） ====================
+
+    /**
+     * 获取最新新闻。使用百度新闻搜索热点。
+     */
+    suspend fun getNews(query: String = ""): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val keyword = if (query.isBlank()) "今日热点新闻" else query
+                val url = "https://news.baidu.com/ns?word=${URLEncoder.encode(keyword, "UTF-8")}&tn=newsdy&from=news"
+                val html = httpGet(url)
+                if (html.isBlank()) return@withContext ""
+
+                val doc = Jsoup.parse(html)
+                // 百度新闻搜索结果标题
+                val titles = doc.select("h3.c-title a, .result-op h3 a, a.news-link-font_1")
+                    .map { it.text().trim() }
+                    .filter { it.length > 5 }
+                    .take(5)
+
+                if (titles.isEmpty()) {
+                    // 备用选择器
+                    val altTitles = doc.select("a[href]")
+                        .map { it.text().trim() }
+                        .filter { it.length > 10 && !it.contains("百度") }
+                        .take(5)
+                    if (altTitles.isEmpty()) return@withContext "暂未获取到新闻"
+                    "【新闻】\n${altTitles.joinToString("\n")}"
+                } else {
+                    "【新闻】\n${titles.joinToString("\n")}"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "News fetch failed: ${e.message}")
+                "获取新闻失败"
+            }
+        }
+    }
+
+    // ==================== 多源合并搜索 ====================
+
+    /**
+     * 多源并行搜索：同时查询 DuckDuckGo + Wikipedia，合并结果。
+     * 适用于通用知识问答，信息更全面。
+     */
+    suspend fun multiSearch(query: String): String {
+        return coroutineScope {
+            val ddgDeferred = async { searchDuckDuckGo(query) }
+            val wikiDeferred = async { searchWikipedia(query) }
+
+            val ddgResult = ddgDeferred.await()
+            val wikiResult = wikiDeferred.await()
+
+            val parts = mutableListOf<String>()
+            if (wikiResult.isNotBlank()) parts.add(wikiResult)
+            if (ddgResult.isNotBlank()) parts.add("【搜索】$ddgResult")
+
+            if (parts.isEmpty()) "" else parts.joinToString("\n\n")
+        }
+    }
+}

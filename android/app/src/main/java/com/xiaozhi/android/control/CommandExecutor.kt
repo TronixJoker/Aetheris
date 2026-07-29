@@ -7,12 +7,9 @@ import android.provider.AlarmClock
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.jsoup.Jsoup
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 /**
  * 命令执行器：执行 AI 下发的系统命令。
@@ -21,11 +18,9 @@ import java.util.concurrent.TimeUnit
 class CommandExecutor(private val context: Context) {
     companion object {
         private const val TAG = "CommandExecutor"
-        private val client = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
     }
+
+    private val apiService = ApiService()
 
     /**
      * 检查权限是否授予
@@ -357,13 +352,20 @@ class CommandExecutor(private val context: Context) {
     }
 
     /**
-     * 调度工具调用分发
+     * 调度工具调用分发。
+     * 同步工具直接返回结果；异步工具（需网络请求）返回提示语，结果通过 callback 异步回调。
      * @param toolName 工具名
      * @param arguments 参数 map
+     * @param asyncCallback 异步结果回调（suspend 工具完成后调用）
      */
-    fun execute(toolName: String, arguments: Map<String, String>): String {
+    fun execute(
+        toolName: String,
+        arguments: Map<String, String>,
+        asyncCallback: ((String) -> Unit)? = null
+    ): String {
         return try {
             when (toolName) {
+                // 同步工具
                 "open_app" -> openApp(arguments["name"] ?: arguments["app"] ?: "")
                 "send_sms" -> sendSms(
                     arguments["to"] ?: arguments["number"] ?: "",
@@ -381,9 +383,74 @@ class CommandExecutor(private val context: Context) {
                 )
                 "open_url" -> openUrl(arguments["url"] ?: arguments["link"] ?: "")
                 "open_settings" -> openSettings(arguments["page"] ?: arguments["name"] ?: "settings")
-                "get_weather" -> getWeather(arguments["city"] ?: arguments["location"] ?: "")
+                "get_weather" -> {
+                    // 天气：优先语音播报，同时也可打开网页
+                    val city = arguments["city"] ?: arguments["location"] ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = getWeatherVoice(city)
+                            asyncCallback(result)
+                        }
+                        "正在查询${city.ifBlank { "当前" }}天气..."
+                    } else {
+                        getWeather(city)
+                    }
+                }
                 "search" -> search(arguments["query"] ?: arguments["keyword"] ?: arguments["q"] ?: "")
                 "play_music" -> playMusic(arguments["query"] ?: arguments["song"] ?: arguments["name"] ?: "")
+
+                // 异步工具（需网络请求，结果通过回调返回）
+                "search_web" -> {
+                    val query = arguments["query"] ?: arguments["keyword"] ?: arguments["q"] ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = searchWeb(query)
+                            asyncCallback(result)
+                        }
+                        "正在搜索：$query"
+                    } else "搜索功能需要异步支持"
+                }
+                "search_video" -> {
+                    val query = arguments["query"] ?: arguments["keyword"] ?: arguments["q"] ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = searchVideo(query)
+                            asyncCallback(result)
+                        }
+                        "正在搜索视频：$query"
+                    } else "视频搜索功能需要异步支持"
+                }
+                "get_stock" -> {
+                    val query = arguments["query"] ?: arguments["code"] ?: arguments["name"] ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = getStock(query)
+                            asyncCallback(result)
+                        }
+                        "正在查询股票：$query"
+                    } else "股票查询功能需要异步支持"
+                }
+                "translate" -> {
+                    val text = arguments["text"] ?: arguments["query"] ?: arguments["content"] ?: ""
+                    val to = arguments["to"] ?: arguments["target"] ?: arguments["language"] ?: "en"
+                    if (asyncCallback != null && text.isNotBlank()) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = translate(text, to)
+                            asyncCallback(result)
+                        }
+                        "正在翻译..."
+                    } else "翻译内容为空"
+                }
+                "get_news" -> {
+                    val query = arguments["query"] ?: arguments["keyword"] ?: arguments["topic"] ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = getNews(query)
+                            asyncCallback(result)
+                        }
+                        "正在获取新闻..."
+                    } else "新闻获取功能需要异步支持"
+                }
                 else -> "未知命令：$toolName"
             }
         } catch (e: Exception) {
@@ -394,56 +461,75 @@ class CommandExecutor(private val context: Context) {
 
     /**
      * 联网搜索并返回结果摘要。
-     * 使用 DuckDuckGo Lite（无需 API Key）搜索，从 HTML 中提取摘要。
-     * 这是 suspend 方法，需要在协程中调用。
-     * 
+     * 使用多源合并搜索：DuckDuckGo + Wikipedia 百科，并行查询，信息更全面。
+     *
      * @param query 搜索关键词
-     * @return 搜索结果摘要（最多 500 字），失败返回空字符串
+     * @return 搜索结果摘要，失败返回空字符串
      */
     suspend fun searchWeb(query: String): String {
         if (query.isBlank()) return ""
-        return withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "Web search: $query")
-                // DuckDuckGo Lite 搜索（无 API 限制，HTML 抓取）
-                val url = "https://lite.duckduckgo.com/lite/?q=${java.net.URLEncoder.encode(query, "UTF-8")}"
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9")
-                    .build()
-                
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Web search HTTP ${response.code}")
-                    return@withContext ""
-                }
-                
-                val html = response.body?.string() ?: ""
-                val doc = Jsoup.parse(html)
-                
-                // DuckDuckGo Lite 的结果在 <a class="result-link"> 里
-                val results = doc.select("a.result-link")
-                if (results.isEmpty()) {
-                    // 备用：找所有链接
-                    val allLinks = doc.select("a[href]")
-                    val snippets = allLinks.mapNotNull { link ->
-                        val text = link.text().trim()
-                        if (text.length > 20 && !text.contains("DuckDuckGo", ignoreCase = true)) text else null
-                    }.take(5)
-                    return@withContext snippets.joinToString("\n").take(500)
-                }
-                
-                val snippets = results.take(5).map { it.text().trim() }
-                    .filter { it.length > 10 }
-                
-                val result = snippets.joinToString("\n")
-                Log.d(TAG, "Web search result: ${result.take(100)}...")
-                result.take(500)
-            } catch (e: Exception) {
-                Log.e(TAG, "Web search failed: ${e.message}")
-                ""
-            }
-        }
+        Log.d(TAG, "Multi-source web search: $query")
+        val result = apiService.multiSearch(query)
+        Log.d(TAG, "Search result: ${result.take(100)}...")
+        return result
+    }
+
+    /**
+     * 搜索视频：通过B站搜索视频，返回标题和UP主信息。
+     * 纯语音播报结果，不跳转页面。
+     * @param query 视频关键词
+     */
+    suspend fun searchVideo(query: String): String {
+        if (query.isBlank()) return "搜索内容为空"
+        Log.d(TAG, "Video search: $query")
+        val result = apiService.searchVideo(query)
+        return result.ifBlank { "未找到相关视频" }
+    }
+
+    /**
+     * 查询股票行情：通过新浪财经查询实时股票/基金/外汇数据。
+     * 支持股票代码（如600519）或股票名称（如贵州茅台）。
+     * @param query 股票代码或名称
+     */
+    suspend fun getStock(query: String): String {
+        if (query.isBlank()) return "查询内容为空"
+        Log.d(TAG, "Stock query: $query")
+        val result = apiService.getStock(query)
+        return result.ifBlank { "未查询到股票行情" }
+    }
+
+    /**
+     * 查询天气（语音播报版）：通过 wttr.in 免费API获取天气数据。
+     * 不跳转浏览器，直接返回天气信息供语音播报。
+     * @param city 城市名
+     */
+    suspend fun getWeatherVoice(city: String): String {
+        if (city.isBlank()) return "请告诉我城市名"
+        Log.d(TAG, "Weather voice query: $city")
+        val result = apiService.getWeather(city)
+        return result.ifBlank { "未获取到天气信息" }
+    }
+
+    /**
+     * 翻译：通过 MyMemory 免费 API 翻译文本。
+     * @param text 要翻译的文本
+     * @param to 目标语言（如 en、ja、ko、fr），默认英译中
+     */
+    suspend fun translate(text: String, to: String): String {
+        if (text.isBlank()) return "翻译内容为空"
+        val target = if (to.isBlank()) "en" else to
+        Log.d(TAG, "Translate: $text -> $target")
+        val result = apiService.translate(text, target)
+        return result.ifBlank { "翻译失败" }
+    }
+
+    /**
+     * 获取新闻：通过百度新闻聚合最新资讯。
+     * @param query 新闻关键词，为空则获取热点新闻
+     */
+    suspend fun getNews(query: String): String {
+        Log.d(TAG, "News fetch: ${query.ifBlank { "热点" }}")
+        val result = apiService.getNews(query)
+        return result.ifBlank { "暂未获取到新闻" }
     }
 }
