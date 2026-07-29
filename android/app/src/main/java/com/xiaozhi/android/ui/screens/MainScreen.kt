@@ -409,18 +409,15 @@ fun EmotionDisplay(
                             translationX = shakeOffset
                         }
                 )
-                // 面部表情（应用头部摇摆，以头部中心为轴心）
+                // 面部表情（跟随图片同步运动，完全相同的变换）
                 androidx.compose.foundation.Canvas(
                     modifier = Modifier
                         .size(280.dp)
                         .scale(scale)
                         .graphicsLayer {
-                            // 头部屏幕中心约在 (0.497w, 0.254h)，以此为轴心旋转
-                            rotationZ = headRotation + bodyRotation
+                            rotationZ = bodyRotation
                             translationY = bodyOffsetY + shakeOffset
                             translationX = shakeOffset
-                            // 头部旋转的轴心设在屏幕中心位置
-                            transformOrigin = TransformOrigin(0.497f, 0.254f)
                         }
                 ) {
                     drawFaceExpression(deviceState, mouthOpen, blinkAlpha)
