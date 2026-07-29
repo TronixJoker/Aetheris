@@ -430,6 +430,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             })
                         })
                         add(buildJsonObject {
+                            put("name", "search_music")
+                            put("description", "【搜索音乐】当用户要求搜索歌曲、查歌曲信息、找某歌手的歌时调用。通过网易云音乐搜索，返回歌曲名、歌手、专辑，结果直接语音播报。例如：搜一下周杰伦的歌、查一下晴天这首歌、有什么好听的歌。Args: `query` - 歌曲名或歌手名")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
                             put("name", "play_music")
                             put("description", "【播放音乐】当用户要求播放歌曲、听音乐、放首歌时调用。例如：播放周杰伦的歌、来一首晴天。Args: `query` - 歌曲名或歌手名")
                             put("inputSchema", buildJsonObject {
@@ -1016,12 +1027,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 10. 播放音乐
-        if (containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
-            val query = extractMusicQuery(text)
-            if (query.isNotEmpty()) {
-                addLog("🎵 本地解析音乐: $query")
-                val result = commandExecutor.playMusic(query)
+        // 10. 搜索音乐（搜歌曲信息）vs 播放音乐（打开音乐App播放）
+        val musicQuery = extractMusicQuery(text)
+        if (musicQuery.isNotEmpty() && containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
+            // 搜索音乐信息：搜歌、查歌、找歌、有什么歌
+            if (containsAny(text, "搜", "搜索", "查一下", "查查", "找一下", "有什么")) {
+                addLog("🎵 本地解析搜索音乐: $musicQuery")
+                viewModelScope.launch {
+                    val result = commandExecutor.searchMusic(musicQuery)
+                    addLog("→ $result")
+                    webSocketManager.sendSystemText(result)
+                }
+            } else {
+                // 播放音乐：打开音乐App
+                addLog("🎵 本地解析播放音乐: $musicQuery")
+                val result = commandExecutor.playMusic(musicQuery)
                 addLog("→ $result")
             }
         }

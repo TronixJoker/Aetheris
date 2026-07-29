@@ -444,4 +444,59 @@ class ApiService {
             if (parts.isEmpty()) "" else parts.joinToString("\n\n")
         }
     }
+
+    // ==================== 8. 音乐搜索（网易云音乐 API，免费无Key） ====================
+
+    /**
+     * 搜索音乐：通过网易云音乐搜索 API 查询歌曲信息。
+     * 返回歌曲名、歌手、专辑等信息，供语音播报。
+     * API: https://music.163.com/api/search/get
+     *
+     * @param query 歌曲名或歌手名
+     * @return 搜索结果列表，失败返回空字符串
+     */
+    suspend fun searchMusic(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://music.163.com/api/search/get?" +
+                    "s=${URLEncoder.encode(query, "UTF-8")}" +
+                    "&type=1&limit=5&offset=0"
+                val body = httpGet(url, mapOf("Referer" to "https://music.163.com"))
+                if (body.isBlank()) return@withContext ""
+
+                // 解析 JSON 中的歌曲信息
+                val nameRegex = Regex(""""name"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val artistRegex = Regex(""""artistName"\s*:\s*"([^"]+)"""")
+                val albumRegex = Regex(""""albumName"\s*:\s*"([^"]+)"""")
+
+                val names = nameRegex.findAll(body).take(5).map {
+                    it.groupValues[1].replace("\\\"", "\"")
+                }.toList()
+                val artists = artistRegex.findAll(body).take(5).map {
+                    it.groupValues[1]
+                }.toList()
+                val albums = albumRegex.findAll(body).take(5).map {
+                    it.groupValues[1]
+                }.toList()
+
+                if (names.isEmpty()) return@withContext "未找到相关音乐"
+
+                val results = names.mapIndexed { i, name ->
+                    val artist = artists.getOrNull(i) ?: ""
+                    val album = albums.getOrNull(i) ?: ""
+                    buildString {
+                        append("《$name》")
+                        if (artist.isNotEmpty()) append(" 歌手：$artist")
+                        if (album.isNotEmpty()) append(" 专辑：$album")
+                    }
+                }.joinToString("\n")
+
+                "【音乐搜索】\n$results"
+            } catch (e: Exception) {
+                Log.e(TAG, "Music search failed: ${e.message}")
+                ""
+            }
+        }
+    }
 }

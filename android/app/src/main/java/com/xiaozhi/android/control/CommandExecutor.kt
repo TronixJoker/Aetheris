@@ -451,6 +451,16 @@ class CommandExecutor(private val context: Context) {
                         "正在获取新闻..."
                     } else "新闻获取功能需要异步支持"
                 }
+                "search_music" -> {
+                    val query = arguments["query"] ?: arguments["keyword"] ?: arguments["song"] ?: arguments["name"] ?: ""
+                    if (asyncCallback != null && query.isNotBlank()) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = searchMusic(query)
+                            asyncCallback(result)
+                        }
+                        "正在搜索音乐：$query"
+                    } else "搜索内容为空"
+                }
                 else -> "未知命令：$toolName"
             }
         } catch (e: Exception) {
@@ -531,5 +541,17 @@ class CommandExecutor(private val context: Context) {
         Log.d(TAG, "News fetch: ${query.ifBlank { "热点" }}")
         val result = apiService.getNews(query)
         return result.ifBlank { "暂未获取到新闻" }
+    }
+
+    /**
+     * 搜索音乐：通过网易云音乐搜索 API 查询歌曲信息。
+     * 返回歌曲名、歌手、专辑等信息，语音播报。
+     * @param query 歌曲名或歌手名
+     */
+    suspend fun searchMusic(query: String): String {
+        if (query.isBlank()) return "搜索内容为空"
+        Log.d(TAG, "Music search: $query")
+        val result = apiService.searchMusic(query)
+        return result.ifBlank { "未找到相关音乐" }
     }
 }
