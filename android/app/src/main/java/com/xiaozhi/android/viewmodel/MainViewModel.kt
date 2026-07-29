@@ -252,9 +252,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             // AI 说完后停止麦克风（节省电量）
                             audioRecorder.stop()
                             addLog("AI 说话结束")
-                            // 自动连续对话：1 秒后自动重新进入聆听
+                            // 自动连续对话：0.4 秒后自动重新进入聆听
                             viewModelScope.launch {
-                                kotlinx.coroutines.delay(1000)
+                                kotlinx.coroutines.delay(400)
                                 // 仅在仍处于 IDLE 且连接正常时自动开启聆听
                                 if (_deviceState.value == DeviceState.IDLE &&
                                     webSocketManager.connectionState.value == WebSocketManager.ConnectionState.CONNECTED &&

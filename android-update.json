@@ -1,1 +1,1 @@
-{"versionCode": 55, "versionName": "1.5.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.5.2.apk", "changelog": "修复打断失效：VAD改用动态噪声基线+突变检测，大幅提升说话打断灵敏度"}
+{"versionCode": 56, "versionName": "1.5.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.5.3.apk", "changelog": "缩短自动聆听延迟：AI说完后0.4秒即重新开启聆听（原1秒）"}
