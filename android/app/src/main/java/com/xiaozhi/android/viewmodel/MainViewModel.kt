@@ -800,6 +800,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val lower = text.lowercase().trim()
         Log.d(TAG, "Local command parsing: $text")
 
+        // 0. 联网搜索：识别问句或搜索意图
+        if (isSearchQuery(text)) {
+            val query = extractSearchQuery(text)
+            addLog("🔍 本地解析搜索: $query")
+            // 打开浏览器搜索（最实用）
+            val result = commandExecutor.search(query)
+            addLog("→ $result")
+            return
+        }
+
         // 1. 设置闹钟：识别 "设闹钟"、"闹钟"、"叫醒"、"起床" + 时间
         if (containsAny(text, "闹钟", "设个", "设一", "叫醒", "起床", "提醒我")) {
             parseAlarmFromText(text)?.let { (hour, minute, label) ->
@@ -856,6 +866,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 addLog("→ $result")
             }
         }
+    }
+
+    /**
+     * 判断是否为需要联网搜索的问题。
+     * 触发条件：问句（什么/怎么/为什么/多少...）或 搜索意图（搜/查/找...）
+     */
+    private fun isSearchQuery(text: String): Boolean {
+        val questionWords = listOf("什么", "怎么", "如何", "为什么", "谁", "哪", "多少", "几", "吗", "呢", "是不是")
+        val searchWords = listOf("搜", "搜索", "查一下", "查查", "找一下", "百度", "谷歌", "查查看")
+        
+        val hasQuestion = questionWords.any { text.contains(it) }
+        val hasSearchIntent = searchWords.any { text.contains(it) }
+        
+        // 问句且长度>5，或明确搜索意图
+        return (hasQuestion && text.length > 5) || hasSearchIntent
+    }
+
+    /**
+     * 从文本中提取搜索关键词（去掉问句词）
+     */
+    private fun extractSearchQuery(text: String): String {
+        return text
+            .replace(Regex("""(请问|帮我|给我|我想|我要|麻烦|请你)?"""), "")
+            .replace(Regex("""(搜一下|搜索|查一下|查查|找一下|百度|谷歌)"""), "")
+            .replace(Regex("""(是什么|怎么样|如何|为什么|多少|是谁|在哪)"""), "")
+            .replace(Regex("""(吗|呢|啊|吧|呀)"""), "")
+            .trim()
+            .ifBlank { text }
     }
 
     private fun containsAny(text: String, vararg keywords: String): Boolean {

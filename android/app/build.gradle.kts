@@ -32,8 +32,8 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 63
-        versionName = "1.7.0"
+        versionCode = 64
+        versionName = "1.8.0"
     }
 
     buildTypes {
@@ -77,6 +77,9 @@ dependencies {
 
     // OkHttp for WebSocket
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Jsoup for HTML parsing (web search)
+    implementation("org.jsoup:jsoup:1.17.2")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

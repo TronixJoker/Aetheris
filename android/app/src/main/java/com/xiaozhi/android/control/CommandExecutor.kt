@@ -7,6 +7,12 @@ import android.provider.AlarmClock
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.jsoup.Jsoup
+import java.util.concurrent.TimeUnit
 
 /**
  * 命令执行器：执行 AI 下发的系统命令。
@@ -15,6 +21,10 @@ import androidx.core.content.ContextCompat
 class CommandExecutor(private val context: Context) {
     companion object {
         private const val TAG = "CommandExecutor"
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
     }
 
     /**
@@ -368,6 +378,61 @@ class CommandExecutor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "execute $toolName failed: ${e.message}", e)
             "执行命令 $toolName 失败：${e.message}"
+        }
+    }
+
+    /**
+     * 联网搜索并返回结果摘要。
+     * 使用 DuckDuckGo Lite（无需 API Key）搜索，从 HTML 中提取摘要。
+     * 这是 suspend 方法，需要在协程中调用。
+     * 
+     * @param query 搜索关键词
+     * @return 搜索结果摘要（最多 500 字），失败返回空字符串
+     */
+    suspend fun searchWeb(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Web search: $query")
+                // DuckDuckGo Lite 搜索（无 API 限制，HTML 抓取）
+                val url = "https://lite.duckduckgo.com/lite/?q=${java.net.URLEncoder.encode(query, "UTF-8")}"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9")
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Web search HTTP ${response.code}")
+                    return@withContext ""
+                }
+                
+                val html = response.body?.string() ?: ""
+                val doc = Jsoup.parse(html)
+                
+                // DuckDuckGo Lite 的结果在 <a class="result-link"> 里
+                val results = doc.select("a.result-link")
+                if (results.isEmpty()) {
+                    // 备用：找所有链接
+                    val allLinks = doc.select("a[href]")
+                    val snippets = allLinks.mapNotNull { link ->
+                        val text = link.text().trim()
+                        if (text.length > 20 && !text.contains("DuckDuckGo", ignoreCase = true)) text else null
+                    }.take(5)
+                    return@withContext snippets.joinToString("\n").take(500)
+                }
+                
+                val snippets = results.take(5).map { it.text().trim() }
+                    .filter { it.length > 10 }
+                
+                val result = snippets.joinToString("\n")
+                Log.d(TAG, "Web search result: ${result.take(100)}...")
+                result.take(500)
+            } catch (e: Exception) {
+                Log.e(TAG, "Web search failed: ${e.message}")
+                ""
+            }
         }
     }
 }
