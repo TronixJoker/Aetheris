@@ -316,33 +316,44 @@ class CommandExecutor(private val context: Context) {
     }
 
     /**
-     * 播放音乐：打开音乐应用搜索指定歌曲/歌手
+     * 播放音乐：尝试打开已安装的音乐应用搜索指定歌曲/歌手。
+     * 不跳转浏览器，避免打开下载页面而非播放页面。
      * @param query 歌曲名或歌手名
      */
     fun playMusic(query: String): String {
         val q = query.trim()
         if (q.isEmpty()) return "播放内容为空"
-        return try {
-            // 尝试打开网易云音乐的搜索deeplink，失败则回退到网页搜索
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("orpiescheme://music/search?keyword=${java.net.URLEncoder.encode(q, "UTF-8")}")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            ContextCompat.startActivity(context, intent, null)
-            "正在播放：$q"
-        } catch (e: Exception) {
-            // 回退：打开网页搜索
-            Log.w(TAG, "playMusic deeplink failed, fallback to web: ${e.message}")
+        val encoded = java.net.URLEncoder.encode(q, "UTF-8")
+
+        // 按优先级尝试各音乐 App 的 deeplink
+        val musicDeeplinks = listOf(
+            "orpiescheme://music/search?keyword=$encoded",            // 网易云音乐
+            "qqmusic://qq.com/ui/search?key=$encoded",                // QQ音乐
+            "kugou://search?keyword=$encoded",                         // 酷狗音乐
+            "kmusic://search?keyword=$encoded",                        // 酷我音乐
+            "androidauto://music/search?keyword=$encoded"              // 通用音乐搜索
+        )
+
+        for (scheme in musicDeeplinks) {
             try {
-                val url = "https://music.163.com/m/search?s=${java.net.URLEncoder.encode(q, "UTF-8")}&type=1"
-                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(scheme)).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                ContextCompat.startActivity(context, webIntent, null)
-                "已打开音乐搜索：$q"
-            } catch (e2: Exception) {
-                "播放音乐失败：${e2.message}"
+                // 先检查是否有 App 能处理这个 deeplink
+                val resolved = intent.resolveActivity(context.packageManager)
+                if (resolved != null) {
+                    ContextCompat.startActivity(context, intent, null)
+                    Log.d(TAG, "playMusic succeeded with: $scheme")
+                    return "正在播放：$q"
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "playMusic deeplink failed: $scheme - ${e.message}")
             }
         }
+
+        // 所有 deeplink 都失败，不打开浏览器，语音提示用户
+        Log.w(TAG, "playMusic: no music app installed")
+        return "未找到音乐应用，请先安装网易云音乐或QQ音乐等音乐应用"
     }
 
     /**
