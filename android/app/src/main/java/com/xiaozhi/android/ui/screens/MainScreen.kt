@@ -18,7 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -297,6 +304,58 @@ fun EmotionDisplay(
         label = "emotion_scale"
     )
 
+    // 身体摇摆角度（说话时左右摆动）
+    val bodyRotation by animateFloatAsState(
+        targetValue = if (deviceState == DeviceState.SPEAKING) 3f else 0f,
+        animationSpec = if (deviceState == DeviceState.SPEAKING) infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ) else tween(300),
+        label = "body_rotation"
+    )
+
+    // 身体上下浮动（聆听时微微弹跳）
+    val bodyOffsetY by animateFloatAsState(
+        targetValue = if (deviceState == DeviceState.LISTENING) -8f else 0f,
+        animationSpec = if (deviceState == DeviceState.LISTENING) infiniteRepeatable(
+            animation = tween(600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ) else tween(300),
+        label = "body_offset_y"
+    )
+
+    // 连接时抖动
+    val shakeOffset by animateFloatAsState(
+        targetValue = if (deviceState == DeviceState.CONNECTING) 2f else 0f,
+        animationSpec = if (deviceState == DeviceState.CONNECTING) infiniteRepeatable(
+            animation = tween(100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ) else tween(200),
+        label = "shake_offset"
+    )
+
+    // 头部摇摆角度（说话时头部左右轻摆）
+    val headRotation by animateFloatAsState(
+        targetValue = when (deviceState) {
+            DeviceState.SPEAKING -> 4f
+            DeviceState.LISTENING -> 2f
+            DeviceState.CONNECTING -> -5f
+            else -> 0f
+        },
+        animationSpec = when (deviceState) {
+            DeviceState.SPEAKING -> infiniteRepeatable(
+                animation = tween(700, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            )
+            DeviceState.LISTENING -> infiniteRepeatable(
+                animation = tween(1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            )
+            else -> tween(400)
+        },
+        label = "head_rotation"
+    )
+
     val color by animateColorAsState(
         targetValue = when (deviceState) {
             DeviceState.LISTENING -> XiaozhiGreen
@@ -307,6 +366,28 @@ fun EmotionDisplay(
         label = "emotion_color"
     )
 
+    // 说话时嘴巴动画
+    val mouthOpen by animateFloatAsState(
+        targetValue = if (deviceState == DeviceState.SPEAKING) 1f else 0f,
+        animationSpec = if (deviceState == DeviceState.SPEAKING) infiniteRepeatable(
+            animation = tween(200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ) else tween(300),
+        label = "mouth_anim"
+    )
+
+    // 思考时眨眼动画
+    val blinkAlpha by animateFloatAsState(
+        targetValue = if (deviceState == DeviceState.CONNECTING) 0.3f else 1f,
+        animationSpec = if (deviceState == DeviceState.CONNECTING)
+            infiniteRepeatable(
+                animation = tween(800, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            )
+        else tween(300),
+        label = "blink_anim"
+    )
+
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
@@ -314,13 +395,37 @@ fun EmotionDisplay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Image(
-                painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_pet),
-                contentDescription = "小智",
-                modifier = Modifier
-                    .size(280.dp)
-                    .scale(scale)
-            )
+            Box(contentAlignment = Alignment.Center) {
+                // 机器人主体图片（身体+头部整体，应用身体摇摆和浮动）
+                Image(
+                    painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_pet),
+                    contentDescription = "小智",
+                    modifier = Modifier
+                        .size(280.dp)
+                        .scale(scale)
+                        .graphicsLayer {
+                            rotationZ = bodyRotation
+                            translationY = bodyOffsetY + shakeOffset
+                            translationX = shakeOffset
+                        }
+                )
+                // 面部表情（应用头部摇摆，以头部中心为轴心）
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .size(280.dp)
+                        .scale(scale)
+                        .graphicsLayer {
+                            // 头部屏幕中心约在 (0.497w, 0.254h)，以此为轴心旋转
+                            rotationZ = headRotation + bodyRotation
+                            translationY = bodyOffsetY + shakeOffset
+                            translationX = shakeOffset
+                            // 头部旋转的轴心设在屏幕中心位置
+                            transformOrigin = TransformOrigin(0.497f, 0.254f)
+                        }
+                ) {
+                    drawFaceExpression(deviceState, mouthOpen, blinkAlpha)
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -329,6 +434,126 @@ fun EmotionDisplay(
                     .size(12.dp)
                     .clip(CircleShape)
                     .background(color)
+            )
+        }
+    }
+}
+
+/**
+ * 在2D图片上叠加绘制面部表情（眼睛和嘴巴）。
+ * 根据设备状态绘制不同的表情。
+ */
+private fun DrawScope.drawFaceExpression(
+    deviceState: DeviceState,
+    mouthOpen: Float,
+    blinkAlpha: Float
+) {
+    val w = size.width
+    val h = size.height
+
+    // 面部黑色屏幕区域（像素分析精确测量 new_robot.png）
+    // 脸部屏幕: x=0.258w~0.698w, y=0.148h~0.375h  宽0.440 高0.226
+    // 精确中心: (0.4775w, 0.2615h)
+    val faceCenterX = w * 0.4775f
+    val faceCenterY = h * 0.2615f
+    val eyeSpacing = w * 0.04f
+    val eyeY = faceCenterY - h * 0.025f
+    val mouthY = faceCenterY + h * 0.045f
+
+    val eyeColor = Color(0xFF00E5FF)
+    val mouthColor = Color(0xFF00E5FF)
+
+    when (deviceState) {
+        DeviceState.LISTENING -> {
+            // 眼睛：大圆点（专注）
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.025f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.025f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
+            )
+            // 嘴巴：小圆（微张）
+            drawCircle(
+                color = mouthColor.copy(alpha = 0.7f),
+                radius = w * 0.015f,
+                center = Offset(faceCenterX, mouthY)
+            )
+        }
+        DeviceState.SPEAKING -> {
+            // 眼睛：弯月形（开心）
+            drawArc(
+                color = eyeColor,
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = Offset(faceCenterX - eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                size = Size(w * 0.04f, w * 0.02f),
+                style = Stroke(width = w * 0.008f)
+            )
+            drawArc(
+                color = eyeColor,
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                size = Size(w * 0.04f, w * 0.02f),
+                style = Stroke(width = w * 0.008f)
+            )
+            // 嘴巴：说话时开合动画
+            val mouthHeight = w * 0.01f + mouthOpen * w * 0.025f
+            drawOval(
+                color = mouthColor,
+                topLeft = Offset(faceCenterX - w * 0.02f, mouthY - mouthHeight / 2),
+                size = Size(w * 0.04f, mouthHeight)
+            )
+        }
+        DeviceState.CONNECTING -> {
+            // 眼睛：半闭（思考/连接中）
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.018f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.018f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
+            )
+            // 嘴巴：波浪线（思考）
+            val path = Path().apply {
+                moveTo(faceCenterX - w * 0.03f, mouthY)
+                cubicTo(
+                    faceCenterX - w * 0.015f, mouthY - w * 0.015f,
+                    faceCenterX - w * 0.005f, mouthY + w * 0.015f,
+                    faceCenterX, mouthY
+                )
+                cubicTo(
+                    faceCenterX + w * 0.005f, mouthY - w * 0.015f,
+                    faceCenterX + w * 0.015f, mouthY + w * 0.015f,
+                    faceCenterX + w * 0.03f, mouthY
+                )
+            }
+            drawPath(
+                path = path,
+                color = mouthColor.copy(alpha = 0.6f),
+                style = Stroke(width = w * 0.006f)
+            )
+        }
+        else -> {
+            // IDLE：眼睛微亮（待机）
+            drawCircle(
+                color = eyeColor.copy(alpha = 0.4f),
+                radius = w * 0.015f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = 0.4f),
+                radius = w * 0.015f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
             )
         }
     }
