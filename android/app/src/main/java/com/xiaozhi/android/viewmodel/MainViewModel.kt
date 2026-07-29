@@ -325,8 +325,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "tools/list" -> buildJsonObject {
                     put("tools", buildJsonArray {
                         add(buildJsonObject {
+                            put("name", "get_weather")
+                            put("description", "【查询天气】当用户问天气、气温、下雨、穿什么衣服、是否需要带伞等问题时必须调用此工具。例如：今天天气怎么样、北京天气、明天会下雨吗。Args: `city` - 城市名称（如北京、上海、深圳），不填则查询默认天气")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("city", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray {})
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "set_alarm")
+                            put("description", "【设置闹钟】当用户要求设闹钟、叫醒、提醒、起床时必须调用此工具。例如：设个7点的闹钟、明早6点半叫我、设闹钟。24小时制。Args: `hour` - 小时(0-23); `minute` - 分钟(0-59); `message` - 闹钟标签(可选)")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("hour", buildJsonObject { put("type", "integer") })
+                                    put("minute", buildJsonObject { put("type", "integer") })
+                                    put("message", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("hour"); add("minute") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "set_timer")
+                            put("description", "【设置倒计时/定时器】当用户要求倒计时、定时N分钟/秒后提醒时必须调用。例如：5分钟后提醒我、倒计时30秒。Args: `seconds` - 秒数; `message` - 标签(可选)")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("seconds", buildJsonObject { put("type", "integer") })
+                                    put("message", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("seconds") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "search")
+                            put("description", "【搜索】当用户要求搜索信息、查资料、问问题且需要联网搜索时调用。例如：搜一下量子力学、查一下红烧肉怎么做。Args: `query` - 搜索关键词")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "play_music")
+                            put("description", "【播放音乐】当用户要求播放歌曲、听音乐、放首歌时调用。例如：播放周杰伦的歌、来一首晴天。Args: `query` - 歌曲名或歌手名")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("query", buildJsonObject { put("type", "string") })
+                                })
+                                put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
                             put("name", "open_app")
-                            put("description", "【打开应用】当用户要求打开、启动、进入某个应用时调用。例如：打开微信、启动抖音、打开设置、打开相机。Args: `name` - 应用名称（中文或英文均可）")
+                            put("description", "【打开应用】当用户要求打开、启动、进入某个应用时调用。例如：打开微信、启动抖音、打开相机。Args: `name` - 应用名称（中文或英文均可）")
                             put("inputSchema", buildJsonObject {
                                 put("type", "object")
                                 put("properties", buildJsonObject {
@@ -359,33 +417,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             })
                         })
                         add(buildJsonObject {
-                            put("name", "set_alarm")
-                            put("description", "【设置闹钟】当用户要求设闹钟、叫醒时调用。Args: `hour` - 小时(0-23); `minute` - 分钟(0-59); `message` - 闹钟标签(可选)")
-                            put("inputSchema", buildJsonObject {
-                                put("type", "object")
-                                put("properties", buildJsonObject {
-                                    put("hour", buildJsonObject { put("type", "integer") })
-                                    put("minute", buildJsonObject { put("type", "integer") })
-                                    put("message", buildJsonObject { put("type", "string") })
-                                })
-                                put("required", buildJsonArray { add("hour"); add("minute") })
-                            })
-                        })
-                        add(buildJsonObject {
-                            put("name", "set_timer")
-                            put("description", "【设置定时器/倒计时】当用户要求倒计时、定时、N秒后提醒时调用。Args: `seconds` - 秒数; `message` - 标签(可选)")
-                            put("inputSchema", buildJsonObject {
-                                put("type", "object")
-                                put("properties", buildJsonObject {
-                                    put("seconds", buildJsonObject { put("type", "integer") })
-                                    put("message", buildJsonObject { put("type", "string") })
-                                })
-                                put("required", buildJsonArray { add("seconds") })
-                            })
-                        })
-                        add(buildJsonObject {
                             put("name", "open_url")
-                            put("description", "【打开网页】当用户要求打开网址、搜索网页、访问网站时调用。Args: `url` - 网址")
+                            put("description", "【打开网页】当用户要求打开网址、访问网站时调用。Args: `url` - 网址")
                             put("inputSchema", buildJsonObject {
                                 put("type", "object")
                                 put("properties", buildJsonObject {
@@ -413,7 +446,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val toolName = params["name"]?.jsonPrimitive?.content ?: ""
                     val arguments = mutableMapOf<String, String>()
                     params["arguments"]?.jsonObject?.forEach { (key, value) ->
-                        arguments[key] = value.jsonPrimitive.content
+                        // 兼容整数/浮点/字符串：整数可能被序列化为 7.0，需取整
+                        val primitive = value.jsonPrimitive
+                        val content = primitive.content
+                        arguments[key] = if (primitive.isString) content else {
+                            // 非字符串：尝试取整（处理 7.0 -> 7）
+                            content.toDoubleOrNull()?.let { it.toInt().toString() } ?: content
+                        }
                     }
                     Log.i(TAG, "Tool call: $toolName, args=$arguments")
                     addLog("🔧 执行命令: $toolName")

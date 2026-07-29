@@ -1,1 +1,1 @@
-{"versionCode": 56, "versionName": "1.5.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.5.3.apk", "changelog": "缩短自动聆听延迟：AI说完后0.4秒即重新开启聆听（原1秒）"}
+{"versionCode": 57, "versionName": "1.6.0", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.0.apk", "changelog": "新增天气查询/搜索/播放音乐工具，优化闹钟等工具描述让AI更容易触发，修复整数参数解析"}

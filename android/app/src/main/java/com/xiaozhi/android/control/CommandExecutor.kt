@@ -219,6 +219,81 @@ class CommandExecutor(private val context: Context) {
     }
 
     /**
+     * 查询天气：打开天气网页展示指定城市的天气。
+     * 使用中国天气网，支持城市名查询。
+     * @param city 城市名（如"北京"、"上海"、"深圳"），为空时打开天气首页
+     */
+    fun getWeather(city: String): String {
+        val c = city.trim()
+        return try {
+            val url = if (c.isEmpty()) {
+                "https://www.weather.com.cn/"
+            } else {
+                // 中国天气网搜索接口，直接跳转到搜索结果页
+                "https://so.weather.com.cn/wap/search.shtml?q=${java.net.URLEncoder.encode(c, "UTF-8")}"
+            }
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ContextCompat.startActivity(context, intent, null)
+            if (c.isEmpty()) "已打开天气查询" else "正在查询 $c 的天气"
+        } catch (e: Exception) {
+            Log.e(TAG, "getWeather failed: ${e.message}")
+            "查询天气失败：${e.message}"
+        }
+    }
+
+    /**
+     * 搜索：通过浏览器搜索关键词
+     * @param query 搜索关键词
+     */
+    fun search(query: String): String {
+        val q = query.trim()
+        if (q.isEmpty()) return "搜索内容为空"
+        return try {
+            val url = "https://www.baidu.com/s?wd=${java.net.URLEncoder.encode(q, "UTF-8")}"
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ContextCompat.startActivity(context, intent, null)
+            "正在搜索：$q"
+        } catch (e: Exception) {
+            Log.e(TAG, "search failed: ${e.message}")
+            "搜索失败：${e.message}"
+        }
+    }
+
+    /**
+     * 播放音乐：打开音乐应用搜索指定歌曲/歌手
+     * @param query 歌曲名或歌手名
+     */
+    fun playMusic(query: String): String {
+        val q = query.trim()
+        if (q.isEmpty()) return "播放内容为空"
+        return try {
+            // 尝试打开网易云音乐的搜索deeplink，失败则回退到网页搜索
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("orpiescheme://music/search?keyword=${java.net.URLEncoder.encode(q, "UTF-8")}")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ContextCompat.startActivity(context, intent, null)
+            "正在播放：$q"
+        } catch (e: Exception) {
+            // 回退：打开网页搜索
+            Log.w(TAG, "playMusic deeplink failed, fallback to web: ${e.message}")
+            try {
+                val url = "https://music.163.com/m/search?s=${java.net.URLEncoder.encode(q, "UTF-8")}&type=1"
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ContextCompat.startActivity(context, webIntent, null)
+                "已打开音乐搜索：$q"
+            } catch (e2: Exception) {
+                "播放音乐失败：${e2.message}"
+            }
+        }
+    }
+
+    /**
      * 调度工具调用分发
      * @param toolName 工具名
      * @param arguments 参数 map
@@ -243,6 +318,9 @@ class CommandExecutor(private val context: Context) {
                 )
                 "open_url" -> openUrl(arguments["url"] ?: arguments["link"] ?: "")
                 "open_settings" -> openSettings(arguments["page"] ?: arguments["name"] ?: "settings")
+                "get_weather" -> getWeather(arguments["city"] ?: arguments["location"] ?: "")
+                "search" -> search(arguments["query"] ?: arguments["keyword"] ?: arguments["q"] ?: "")
+                "play_music" -> playMusic(arguments["query"] ?: arguments["song"] ?: arguments["name"] ?: "")
                 else -> "未知命令：$toolName"
             }
         } catch (e: Exception) {
