@@ -1,1 +1,1 @@
-{"versionCode": 62, "versionName": "1.6.5", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.5.apk", "changelog": "修复闹钟/定时器/短信/拨号无法打开：去掉resolveActivity依赖，添加queries声明，直接try startActivity"}
+{"versionCode": 63, "versionName": "1.7.0", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.7.0.apk", "changelog": "本地命令解析保底方案：直接识别用户语音文本中的闹钟/定时器/天气/拨号/短信/音乐命令并本地执行，不再依赖AI服务器MCP工具调用"}

@@ -276,6 +276,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val text = data["text"]?.jsonPrimitive?.content ?: ""
                     if (text.isNotEmpty()) {
                         addLog("用户: $text")
+                        // 本地命令解析：直接识别常用语音命令并执行，不依赖服务器 MCP 工具调用
+                        parseAndExecuteLocalCommand(text)
                     }
                 }
 
@@ -787,6 +789,180 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         current.add(message)
         if (current.size > 100) current.removeAt(0)
         _logMessages.value = current
+    }
+
+    /**
+     * 本地命令解析：从用户语音文本中识别常用命令并直接执行。
+     * 这是 AI 服务器 MCP 工具调用的保底方案——即使 AI 只回复文字不调工具，
+     * 本地也能识别并执行闹钟、天气、拨号等操作。
+     */
+    private fun parseAndExecuteLocalCommand(text: String) {
+        val lower = text.lowercase().trim()
+        Log.d(TAG, "Local command parsing: $text")
+
+        // 1. 设置闹钟：识别 "设闹钟"、"闹钟"、"叫醒"、"起床" + 时间
+        if (containsAny(text, "闹钟", "设个", "设一", "叫醒", "起床", "提醒我")) {
+            parseAlarmFromText(text)?.let { (hour, minute, label) ->
+                addLog("🔔 本地解析闹钟: ${hour}点${minute}分")
+                val result = commandExecutor.setAlarm(hour, minute, label)
+                addLog("→ $result")
+            }
+        }
+
+        // 2. 设置定时器：识别 "倒计时"、"N秒"、"N分钟"、"定时器"
+        if (containsAny(text, "倒计时", "定时", "几秒", "秒", "分钟后", "计时器")) {
+            parseTimerFromText(text)?.let { (seconds, label) ->
+                addLog("⏱️ 本地解析定时器: ${seconds}秒")
+                val result = commandExecutor.setTimer(seconds, label)
+                addLog("→ $result")
+            }
+        }
+
+        // 3. 查天气
+        if (containsAny(text, "天气", "气温", "下雨", "穿", "带伞", "温度")) {
+            val city = extractCity(text)
+            addLog("🌤️ 本地解析天气查询: ${city.ifBlank { "默认" }}")
+            val result = commandExecutor.getWeather(city)
+            addLog("→ $result")
+        }
+
+        // 4. 拨号
+        if (containsAny(text, "打给", "拨打", "打电话", "call")) {
+            val number = extractPhoneNumber(text)
+            if (number.isNotEmpty()) {
+                addLog("📞 本地解析拨号: $number")
+                val result = commandExecutor.makeCall(number)
+                addLog("→ $result")
+            }
+        }
+
+        // 5. 发短信
+        if (containsAny(text, "发短信", "发消息", "告诉")) {
+            val match = Regex("""(?:给|跟|发)?([\d]{7,11})""").find(text)
+            if (match != null) {
+                val phone = match.groupValues[1]
+                addLog("📱 本地解析短信: $phone")
+                val result = commandExecutor.sendSms(phone, "")
+                addLog("→ $result")
+            }
+        }
+
+        // 6. 播放音乐
+        if (containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
+            val query = extractMusicQuery(text)
+            if (query.isNotEmpty()) {
+                addLog("🎵 本地解析音乐: $query")
+                val result = commandExecutor.playMusic(query)
+                addLog("→ $result")
+            }
+        }
+    }
+
+    private fun containsAny(text: String, vararg keywords: String): Boolean {
+        return keywords.any { text.contains(it, ignoreCase = true) }
+    }
+
+    /**
+     * 从文本中解析闹钟时间。
+     * 支持格式：
+     *   "7点的闹钟" → 7:00
+     *   "设个7点半的闹钟" → 7:30
+     *   "明早6点叫我" → 6:00
+     *   "半小时后提醒我" → 自动计算
+     *   "18:30的闹钟" → 18:30
+     */
+    private fun parseAlarmFromText(text: String): Triple<Int, Int, String>? {
+        // 匹配 "X点Y分" / "X点半" / "X点"
+        val timeRegex = Regex("""(\d{1,2})\s*(?:点|时|:|：)\s*(半|(\d{1,2})\s*(?:分|分钟))?""")
+        val match = timeRegex.find(text) ?: return null
+        
+        val hour = match.groupValues[1].toIntOrNull() ?: return null
+        val minuteStr = match.groupValues[3]
+        val minute = when {
+            match.groupValues[2] == "半" -> 30
+            minuteStr.isNotEmpty() -> minuteStr.toIntOrNull() ?: 0
+            else -> 0
+        }
+        
+        if (hour !in 0..23 || minute !in 0..59) return null
+        
+        // 提取标签（闹钟用途）
+        val label = when {
+            text.contains("起床") -> "起床闹钟"
+            text.contains("叫醒") -> "叫醒闹钟"
+            text.contains("提醒") -> "提醒闹钟"
+            else -> ""
+        }
+        
+        return Triple(hour, minute, label)
+    }
+
+    /**
+     * 从文本中解析定时器秒数。
+     * 支持："5分钟" → 300, "30秒" → 30, "1小时" → 3600
+     */
+    private fun parseTimerFromText(text: String): Pair<Int, String>? {
+        // 匹配 "N分钟" / "N秒" / "N小时"
+        val minMatch = Regex("""(\d+)\s*(?:分钟|分|min)""").find(text)
+        if (minMatch != null) {
+            val mins = minMatch.groupValues[1].toIntOrNull() ?: return null
+            return Pair(mins * 60, "定时器")
+        }
+        val secMatch = Regex("""(\d+)\s*(?:秒|秒钟|sec)""").find(text)
+        if (secMatch != null) {
+            val secs = secMatch.groupValues[1].toIntOrNull() ?: return null
+            return Pair(secs, "定时器")
+        }
+        val hourMatch = Regex("""(\d+)\s*(?:小时|钟头|h)""").find(text)
+        if (hourMatch != null) {
+            val hours = hourMatch.groupValues[1].toIntOrNull() ?: return null
+            return Pair(hours * 3600, "定时器")
+        }
+        return null
+    }
+
+    /**
+     * 从文本中提取城市名
+     */
+    private fun extractCity(text: String): String {
+        // 常见城市名列表（简化版）
+        val cities = listOf(
+            "北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "南京",
+            "西安", "重庆", "天津", "苏州", "郑州", "长沙", "青岛", "大连",
+            "厦门", "福州", "宁波", "合肥", "无锡", "昆明", "哈尔滨", "沈阳",
+            "石家庄", "济南", "长春", "太原", "贵阳", "南宁", "兰州", "南昌",
+            "珠海", "东莞", "佛山", "中山", "惠州", "温州", "嘉兴", "绍兴",
+            "洛阳", "桂林", "柳州", "扬州", "徐州", "烟台", "潍坊", "唐山"
+        )
+        return cities.firstOrNull { text.contains(it) } ?: ""
+    }
+
+    /**
+     * 从文本中提取电话号码
+     */
+    private fun extractPhoneNumber(text: String): String {
+        // 匹配手机号（1开头11位）或座机
+        val mobileMatch = Regex("""1[3-9]\d{9}""").find(text)
+        if (mobileMatch != null) return mobileMatch.value
+        // 匹配带区号座机
+        val landlineMatch = Regex("""0\d{2,3}-?\d{7,8}""").find(text)
+        if (landlineMatch != null) return landlineMatch.value
+        // 匹配文本中的数字序列
+        val digitMatch = Regex("""(\d{7,11})""").find(text)
+        return digitMatch?.value ?: ""
+    }
+
+    /**
+     * 从文本中提取音乐查询关键词
+     */
+    private fun extractMusicQuery(text: String): String {
+        // 去掉 "播放"、"放"、"听" 等动词
+        val cleaned = text
+            .replace(Regex("""(请|帮我|给我)?(播放|放|听|来|要|我想|我要)?"""), "")
+            .replace(Regex("""(一首歌|首歌|音乐|歌曲|的歌)"""), "")
+            .replace(Regex("""(吧|一下|下|来)"""), "")
+            .trim()
+        return cleaned
     }
 
     override fun onCleared() {
