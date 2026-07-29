@@ -451,10 +451,9 @@ private fun DrawScope.drawFaceExpression(
     val w = size.width
     val h = size.height
 
-    // 面部黑色屏幕区域（像素分析精确测量 new_robot.png）
-    // 脸部屏幕: x=0.258w~0.698w, y=0.148h~0.375h  宽0.440 高0.226
-    // 精确中心: (0.4775w, 0.2615h)
-    val faceCenterX = w * 0.4775f
+    // 面部黑色屏幕区域（像素分析+用户微调）
+    // 右移修正: 0.4775 -> 0.50
+    val faceCenterX = w * 0.50f
     val faceCenterY = h * 0.2615f
     val eyeSpacing = w * 0.04f
     val eyeY = faceCenterY - h * 0.025f
