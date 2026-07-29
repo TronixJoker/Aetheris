@@ -52,14 +52,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var audioChannelOpened = false
 
     // VAD（语音活动检测）自动打断相关参数
-    // 当小智说话时，若检测到用户声音能量超过阈值并持续若干帧，自动打断
-    // 阈值较高（3000）以避免小智自己的 TTS 声音误触发（配合 AEC 回声消除）
-    private val vadEnergyThreshold = 3000f      // RMS 能量阈值（16-bit PCM）
-    private val vadTriggerFrames = 4            // 连续超阈值帧数才触发（约 80ms，更稳定）
+    // 小智说话时监测麦克风，若用户声音能量显著高于背景基线并持续若干帧，自动打断。
+    // 采用"动态基线 + 突变检测"：基线随 TTS 残留/环境噪声自适应更新，
+    // 用户说话时能量会显著突增，从而触发打断。比固定阈值更鲁棒。
+    private val vadTriggerFrames = 5            // 连续突增帧数才触发（约 100ms，平衡灵敏度与稳定性）
     private var vadOverThresholdCount = 0
+    // 动态噪声基线（RMS 指数移动平均），初始值较低
+    private var vadNoiseBaseline = 300f
+    // 触发倍数：当前 RMS 超过 基线 × 该倍数 且高于最低绝对阈值，才算突增
+    private val vadRatioThreshold = 2.5f
+    // 最低绝对能量阈值：低于此值视为静音，避免极低底噪下误触发
+    private val vadAbsoluteMin = 350f
     // 打断后的冷却时间，避免连续打断
     private var lastInterruptTimeMs = 0L
-    private val vadCooldownMs = 1500L
+    private val vadCooldownMs = 1000L
+    // 调试：每隔若干帧打印一次 RMS，便于排查
+    private var vadDebugCounter = 0
 
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
@@ -557,11 +565,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * VAD：检测用户是否在说话（用于自动打断）。
-     * 基于 RMS 能量阈值 + 连续帧确认，避免噪声误触发。
+     * 采用"动态噪声基线 + 突变倍数 + 最低绝对阈值"三重判定：
+     *  - 基线随环境/TTS 残留自适应更新（指数移动平均）
+     *  - 用户说话时 RMS 会显著高于基线（突增）
+     *  - 同时要求绝对能量高于最低阈值，避免极低底噪误触发
+     * 连续若干帧满足条件才触发，避免短促噪声。
      * 注意：SPEAKING 期间麦克风需保持开启才能工作。
      */
     private fun detectUserInterruption(pcm: ShortArray): Boolean {
-        // 冷却期内不触发
         val now = System.currentTimeMillis()
         if (now - lastInterruptTimeMs < vadCooldownMs) {
             vadOverThresholdCount = 0
@@ -576,16 +587,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val rms = Math.sqrt(sumSq / pcm.size).toFloat()
 
-        if (rms > vadEnergyThreshold) {
+        // 调试日志：每 25 帧（约 0.5s）打印一次 RMS 和基线，便于排查
+        vadDebugCounter++
+        if (vadDebugCounter >= 25) {
+            vadDebugCounter = 0
+            Log.d(TAG, "VAD rms=$rms baseline=$vadNoiseBaseline threshold=${vadNoiseBaseline * vadRatioThreshold}")
+        }
+
+        // 判定是否为"突增"：高于最低绝对阈值 且 高于基线倍数
+        val isBurst = rms > vadAbsoluteMin && rms > vadNoiseBaseline * vadRatioThreshold
+
+        if (isBurst) {
             vadOverThresholdCount++
             if (vadOverThresholdCount >= vadTriggerFrames) {
                 vadOverThresholdCount = 0
-                addLog("🔊 检测到用户说话，自动打断")
+                addLog("🔊 检测到用户说话，自动打断 (rms=$rms)")
                 return true
             }
+            // 突增期间不更新基线，避免把用户说话吸收进基线
         } else {
             // 能量回落，重置计数
             vadOverThresholdCount = 0
+            // 平静期更新基线（指数移动平均，alpha=0.1，缓慢跟踪环境噪声）
+            // 仅当 RMS 不特别高时才更新，防止偶发高能量污染基线
+            if (rms < vadNoiseBaseline * vadRatioThreshold) {
+                vadNoiseBaseline = vadNoiseBaseline * 0.9f + rms * 0.1f
+                // 基线下限保护，避免基线过低导致过于敏感
+                if (vadNoiseBaseline < 150f) vadNoiseBaseline = 150f
+            }
         }
         return false
     }
