@@ -24,15 +24,15 @@ import java.util.concurrent.TimeUnit
 class UpdateManager(private val context: Context) {
     companion object {
         private const val TAG = "UpdateManager"
-        // GitHub API 优先（不经过 CDN，永远返回最新内容，返回 base64 编码的 content 字段）
-        // jsdelivr 镜像作为备用（有 CDN 缓存，可能滞后）
+        // raw.githubusercontent.com 没有 CDN 缓存，是最可靠的源（虽然国内可能慢，但一定是最新的）
+        // jsdelivr 有 CDN 缓存，作为最后备用
         private const val UPDATE_INFO_URL =
-            "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main"
+            "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json"
         private val UPDATE_INFO_FALLBACK_URLS = listOf(
-            "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
-            "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
+            "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main",
             "https://fastly.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
-            "https://gcore.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
+            "https://gcore.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
+            "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
         private const val DOWNLOAD_STALL_TIMEOUT_MS = 30_000L
@@ -113,26 +113,29 @@ class UpdateManager(private val context: Context) {
     fun checkForUpdates(updateUrl: String = UPDATE_INFO_URL, callback: (UpdateResult) -> Unit) {
         _updateState.value = UpdateState.CHECKING
         scope.launch {
-            // 主 URL + 备用 URL
+            val currentVersionCode = getCurrentVersionCode()
+            // 主 URL + 备用 URL（raw 优先，jsDelivr 放最后）
             val urls = mutableListOf(updateUrl)
             for (fallback in UPDATE_INFO_FALLBACK_URLS) {
                 if (fallback !in urls) urls.add(fallback)
             }
 
-            // 并行请求所有源，取 versionCode 最大的结果（最快且最新）
+            // 并行请求所有源
             val deferreds = urls.map { url ->
                 async(Dispatchers.IO) {
                     try {
-                        // 给jsdelivr URL加时间戳参数，绕过CDN缓存
                         val cacheBustUrl = if (url.contains("jsdelivr.net")) {
-                            "$url?t=${System.currentTimeMillis()}"
+                            // 对 jsDelivr 用秒级时间戳 + 随机数，更强的缓存破坏
+                            "$url?t=${System.currentTimeMillis()}_${(0..999).random()}"
                         } else {
                             url
                         }
                         Log.d(TAG, "Checking update from: $cacheBustUrl")
                         val request = Request.Builder()
                             .url(cacheBustUrl)
-                            .header("Cache-Control", "no-cache")
+                            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                            .header("Pragma", "no-cache")
+                            .header("Expires", "0")
                             .build()
                         val response = checkClient.newCall(request).execute()
                         if (response.code != 200) {
@@ -163,7 +166,7 @@ class UpdateManager(private val context: Context) {
                 }
             }
 
-            // 等所有请求完成（或超时），取 versionCode 最大的
+            // 等所有请求完成，取 versionCode 最大的
             var bestInfo: UpdateInfo? = null
             var successCount = 0
             for (deferred in deferreds) {
@@ -171,8 +174,17 @@ class UpdateManager(private val context: Context) {
                     val info = deferred.await()
                     if (info != null) {
                         successCount++
+                        // 关键：如果是 jsDelivr 源且返回的 versionCode <= 当前版本，
+                        // 说明这是旧缓存，不纳入比较（除非没有更好的结果）
+                        val url = urls[deferreds.indexOf(deferred)]
+                        val isJsDelivrCached = url.contains("jsdelivr.net")
                         if (bestInfo == null || info.versionCode > bestInfo!!.versionCode) {
-                            bestInfo = info
+                            // 对于 jsDelivr 缓存的旧版本，只有当没有其他更好结果时才采用
+                            if (isJsDelivrCached && info.versionCode <= currentVersionCode && bestInfo != null) {
+                                Log.d(TAG, "Ignoring jsDelivr cached version ${info.versionCode} (<= current $currentVersionCode, already have ${bestInfo!!.versionCode})")
+                            } else {
+                                bestInfo = info
+                            }
                         }
                     }
                 } catch (_: Exception) {}
@@ -186,8 +198,8 @@ class UpdateManager(private val context: Context) {
                 return@launch
             }
 
-            Log.d(TAG, "Best versionCode=${info.versionCode} from $successCount sources (current=${getCurrentVersionCode()})")
-            if (info.versionCode > getCurrentVersionCode()) {
+            Log.d(TAG, "Best versionCode=${info.versionCode} from $successCount sources (current=$currentVersionCode)")
+            if (info.versionCode > currentVersionCode) {
                 _updateState.value = UpdateState.UPDATE_AVAILABLE
                 callback(UpdateResult(
                     hasUpdate = true,
