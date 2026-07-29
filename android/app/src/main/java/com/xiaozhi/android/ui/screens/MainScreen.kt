@@ -420,7 +420,7 @@ fun EmotionDisplay(
                             translationX = shakeOffset
                         }
                 ) {
-                    drawFaceExpression(deviceState, mouthOpen, blinkAlpha)
+                    drawFaceExpression(deviceState, mouthOpen, blinkAlpha, emotion)
                 }
             }
 
@@ -443,7 +443,8 @@ fun EmotionDisplay(
 private fun DrawScope.drawFaceExpression(
     deviceState: DeviceState,
     mouthOpen: Float,
-    blinkAlpha: Float
+    blinkAlpha: Float,
+    emotion: String = "neutral"
 ) {
     val w = size.width
     val h = size.height
@@ -458,98 +459,377 @@ private fun DrawScope.drawFaceExpression(
     val eyeColor = Color(0xFF00E5FF)
     val mouthColor = Color(0xFF00E5FF)
 
-    when (deviceState) {
-        DeviceState.LISTENING -> {
-            // 眼睛：大圆点（专注）
-            drawCircle(
-                color = eyeColor.copy(alpha = blinkAlpha),
-                radius = w * 0.025f,
-                center = Offset(faceCenterX - eyeSpacing, eyeY)
-            )
-            drawCircle(
-                color = eyeColor.copy(alpha = blinkAlpha),
-                radius = w * 0.025f,
-                center = Offset(faceCenterX + eyeSpacing, eyeY)
-            )
-            // 嘴巴：小圆（微张）
-            drawCircle(
-                color = mouthColor.copy(alpha = 0.7f),
-                radius = w * 0.015f,
-                center = Offset(faceCenterX, mouthY)
-            )
-        }
-        DeviceState.SPEAKING -> {
-            // 眼睛：弯月形（开心）
+    // 如果有特定情绪，优先绘制情绪表情
+    when (emotion.lowercase()) {
+        "happy", "smile", "excited", "laughing" -> {
+            // 开心/兴奋：弯月笑眼 + 大笑
             drawArc(
-                color = eyeColor,
-                startAngle = 0f,
-                sweepAngle = 180f,
-                useCenter = false,
+                color = eyeColor.copy(alpha = blinkAlpha),
+                startAngle = 0f, sweepAngle = 180f, useCenter = false,
                 topLeft = Offset(faceCenterX - eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
                 size = Size(w * 0.04f, w * 0.02f),
                 style = Stroke(width = w * 0.008f)
             )
             drawArc(
-                color = eyeColor,
-                startAngle = 0f,
-                sweepAngle = 180f,
-                useCenter = false,
+                color = eyeColor.copy(alpha = blinkAlpha),
+                startAngle = 0f, sweepAngle = 180f, useCenter = false,
                 topLeft = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
                 size = Size(w * 0.04f, w * 0.02f),
                 style = Stroke(width = w * 0.008f)
             )
-            // 嘴巴：说话时开合动画
-            val mouthHeight = w * 0.01f + mouthOpen * w * 0.025f
-            drawOval(
+            if (deviceState == DeviceState.SPEAKING) {
+                val mouthHeight = w * 0.02f + mouthOpen * w * 0.03f
+                drawArc(
+                    color = mouthColor,
+                    startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                    topLeft = Offset(faceCenterX - w * 0.04f, mouthY - mouthHeight / 2),
+                    size = Size(w * 0.08f, mouthHeight),
+                    style = Stroke(width = w * 0.008f)
+                )
+            } else {
+                drawArc(
+                    color = mouthColor,
+                    startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                    topLeft = Offset(faceCenterX - w * 0.03f, mouthY - w * 0.015f),
+                    size = Size(w * 0.06f, w * 0.03f),
+                    style = Stroke(width = w * 0.008f)
+                )
+            }
+        }
+        "sad", "cry", "tearful" -> {
+            // 伤心：弯月眼（下弯）+ 泪水 + 下弯嘴
+            drawArc(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                size = Size(w * 0.04f, w * 0.02f),
+                style = Stroke(width = w * 0.008f)
+            )
+            drawArc(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                size = Size(w * 0.04f, w * 0.02f),
+                style = Stroke(width = w * 0.008f)
+            )
+            // 泪水
+            drawCircle(
+                color = Color(0xFF00BFFF).copy(alpha = 0.8f),
+                radius = w * 0.008f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY + w * 0.04f)
+            )
+            drawCircle(
+                color = Color(0xFF00BFFF).copy(alpha = 0.8f),
+                radius = w * 0.008f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY + w * 0.04f)
+            )
+            // 嘴巴下弯
+            drawArc(
                 color = mouthColor,
-                topLeft = Offset(faceCenterX - w * 0.02f, mouthY - mouthHeight / 2),
-                size = Size(w * 0.04f, mouthHeight)
+                startAngle = 0f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.03f, mouthY - w * 0.01f),
+                size = Size(w * 0.06f, w * 0.03f),
+                style = Stroke(width = w * 0.008f)
             )
         }
-        DeviceState.CONNECTING -> {
-            // 眼睛：半闭（思考/连接中）
+        "angry", "mad", "furious" -> {
+            // 生气：怒视眼 + 紧抿嘴
+            // 眼睛
             drawCircle(
                 color = eyeColor.copy(alpha = blinkAlpha),
-                radius = w * 0.018f,
+                radius = w * 0.02f,
                 center = Offset(faceCenterX - eyeSpacing, eyeY)
             )
             drawCircle(
                 color = eyeColor.copy(alpha = blinkAlpha),
-                radius = w * 0.018f,
+                radius = w * 0.02f,
                 center = Offset(faceCenterX + eyeSpacing, eyeY)
             )
-            // 嘴巴：波浪线（思考）
-            val path = Path().apply {
-                moveTo(faceCenterX - w * 0.03f, mouthY)
-                cubicTo(
-                    faceCenterX - w * 0.015f, mouthY - w * 0.015f,
-                    faceCenterX - w * 0.005f, mouthY + w * 0.015f,
-                    faceCenterX, mouthY
+            // 眉毛（倒八字）
+            val leftBrowPath = Path().apply {
+                moveTo(faceCenterX - eyeSpacing - w * 0.03f, eyeY - w * 0.03f)
+                lineTo(faceCenterX - eyeSpacing + w * 0.01f, eyeY - w * 0.015f)
+            }
+            drawPath(leftBrowPath, eyeColor, style = Stroke(width = w * 0.008f))
+            val rightBrowPath = Path().apply {
+                moveTo(faceCenterX + eyeSpacing + w * 0.03f, eyeY - w * 0.03f)
+                lineTo(faceCenterX + eyeSpacing - w * 0.01f, eyeY - w * 0.015f)
+            }
+            drawPath(rightBrowPath, eyeColor, style = Stroke(width = w * 0.008f))
+            // 紧抿的嘴
+            drawLine(
+                color = mouthColor,
+                start = Offset(faceCenterX - w * 0.03f, mouthY),
+                end = Offset(faceCenterX + w * 0.03f, mouthY),
+                strokeWidth = w * 0.008f
+            )
+        }
+        "surprised", "shocked" -> {
+            // 惊讶：大圆眼 + O型嘴
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.03f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.03f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
+            )
+            if (deviceState == DeviceState.SPEAKING) {
+                drawCircle(
+                    color = mouthColor,
+                    radius = w * 0.025f + mouthOpen * w * 0.015f,
+                    center = Offset(faceCenterX, mouthY)
                 )
-                cubicTo(
-                    faceCenterX + w * 0.005f, mouthY - w * 0.015f,
-                    faceCenterX + w * 0.015f, mouthY + w * 0.015f,
-                    faceCenterX + w * 0.03f, mouthY
+            } else {
+                drawCircle(
+                    color = mouthColor,
+                    radius = w * 0.02f,
+                    center = Offset(faceCenterX, mouthY)
                 )
             }
+        }
+        "fearful", "worried", "scared" -> {
+            // 担心/害怕：稍大眼 + 抖动嘴
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.025f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.025f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
+            )
+            // 嘴巴微张
+            drawOval(
+                color = mouthColor.copy(alpha = 0.8f),
+                topLeft = Offset(faceCenterX - w * 0.015f, mouthY - w * 0.01f),
+                size = Size(w * 0.03f, w * 0.025f)
+            )
+        }
+        "disgusted" -> {
+            // 厌恶：波浪眼 + 撇嘴
             drawPath(
-                path = path,
-                color = mouthColor.copy(alpha = 0.6f),
+                path = Path().apply {
+                    moveTo(faceCenterX - eyeSpacing - w * 0.02f, eyeY)
+                    cubicTo(
+                        faceCenterX - eyeSpacing - w * 0.01f, eyeY - w * 0.015f,
+                        faceCenterX - eyeSpacing + w * 0.01f, eyeY + w * 0.015f,
+                        faceCenterX - eyeSpacing + w * 0.02f, eyeY
+                    )
+                },
+                color = eyeColor.copy(alpha = blinkAlpha),
+                style = Stroke(width = w * 0.006f)
+            )
+            drawPath(
+                path = Path().apply {
+                    moveTo(faceCenterX + eyeSpacing - w * 0.02f, eyeY)
+                    cubicTo(
+                        faceCenterX + eyeSpacing - w * 0.01f, eyeY - w * 0.015f,
+                        faceCenterX + eyeSpacing + w * 0.01f, eyeY + w * 0.015f,
+                        faceCenterX + eyeSpacing + w * 0.02f, eyeY
+                    )
+                },
+                color = eyeColor.copy(alpha = blinkAlpha),
+                style = Stroke(width = w * 0.006f)
+            )
+            // 嘴巴下撇
+            drawArc(
+                color = mouthColor,
+                startAngle = 0f, sweepAngle = 120f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.025f, mouthY - w * 0.01f),
+                size = Size(w * 0.05f, w * 0.025f),
+                style = Stroke(width = w * 0.006f)
+            )
+        }
+        "cute", "happy_cute" -> {
+            // 可爱：大圆眼 + 腮红 + 小嘴
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.03f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.03f,
+                center = Offset(faceCenterX + eyeSpacing, eyeY)
+            )
+            // 眼睛高光
+            drawCircle(Color.White.copy(alpha = 0.8f), radius = w * 0.008f,
+                center = Offset(faceCenterX - eyeSpacing + w * 0.01f, eyeY - w * 0.01f))
+            drawCircle(Color.White.copy(alpha = 0.8f), radius = w * 0.008f,
+                center = Offset(faceCenterX + eyeSpacing + w * 0.01f, eyeY - w * 0.01f))
+            // 腮红
+            drawCircle(Color(0xFFFFB6C1).copy(alpha = 0.6f), radius = w * 0.02f,
+                center = Offset(faceCenterX - eyeSpacing - w * 0.025f, eyeY + w * 0.02f))
+            drawCircle(Color(0xFFFFB6C1).copy(alpha = 0.6f), radius = w * 0.02f,
+                center = Offset(faceCenterX + eyeSpacing + w * 0.025f, eyeY + w * 0.02f))
+            // 小嘴
+            drawArc(
+                color = mouthColor,
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.015f, mouthY - w * 0.008f),
+                size = Size(w * 0.03f, w * 0.015f),
+                style = Stroke(width = w * 0.006f)
+            )
+        }
+        "love", "loving" -> {
+            // 爱心眼
+            val heartPathLeft = Path().apply {
+                val cx = faceCenterX - eyeSpacing
+                val cy = eyeY
+                moveTo(cx, cy + w * 0.015f)
+                cubicTo(cx - w * 0.04f, cy - w * 0.02f, cx - w * 0.02f, cy - w * 0.04f, cx, cy - w * 0.01f)
+                cubicTo(cx + w * 0.02f, cy - w * 0.04f, cx + w * 0.04f, cy - w * 0.02f, cx, cy + w * 0.015f)
+            }
+            drawPath(heartPathLeft, Color(0xFFFF4081), style = Stroke(width = w * 0.006f))
+            val heartPathRight = Path().apply {
+                val cx = faceCenterX + eyeSpacing
+                val cy = eyeY
+                moveTo(cx, cy + w * 0.015f)
+                cubicTo(cx - w * 0.04f, cy - w * 0.02f, cx - w * 0.02f, cy - w * 0.04f, cx, cy - w * 0.01f)
+                cubicTo(cx + w * 0.02f, cy - w * 0.04f, cx + w * 0.04f, cy - w * 0.02f, cx, cy + w * 0.015f)
+            }
+            drawPath(heartPathRight, Color(0xFFFF4081), style = Stroke(width = w * 0.006f))
+            // 微笑
+            drawArc(
+                color = mouthColor,
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.03f, mouthY - w * 0.01f),
+                size = Size(w * 0.06f, w * 0.03f),
+                style = Stroke(width = w * 0.008f)
+            )
+        }
+        "sleepy", "tired" -> {
+            // 困：闭眼
+            drawLine(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                start = Offset(faceCenterX - eyeSpacing - w * 0.02f, eyeY),
+                end = Offset(faceCenterX - eyeSpacing + w * 0.02f, eyeY),
+                strokeWidth = w * 0.008f
+            )
+            drawLine(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                start = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY),
+                end = Offset(faceCenterX + eyeSpacing + w * 0.02f, eyeY),
+                strokeWidth = w * 0.008f
+            )
+            // 小嘴微张
+            drawOval(
+                color = mouthColor.copy(alpha = 0.5f),
+                topLeft = Offset(faceCenterX - w * 0.01f, mouthY - w * 0.008f),
+                size = Size(w * 0.02f, w * 0.016f)
+            )
+        }
+        "wink" -> {
+            // 眨眼：一只眼闭一只眼睁
+            drawCircle(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                radius = w * 0.025f,
+                center = Offset(faceCenterX - eyeSpacing, eyeY)
+            )
+            drawLine(
+                color = eyeColor.copy(alpha = blinkAlpha),
+                start = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY),
+                end = Offset(faceCenterX + eyeSpacing + w * 0.02f, eyeY),
+                strokeWidth = w * 0.008f
+            )
+            // 微笑
+            drawArc(
+                color = mouthColor,
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.025f, mouthY - w * 0.01f),
+                size = Size(w * 0.05f, w * 0.025f),
                 style = Stroke(width = w * 0.006f)
             )
         }
         else -> {
-            // IDLE：眼睛微亮（待机）
-            drawCircle(
-                color = eyeColor.copy(alpha = 0.4f),
-                radius = w * 0.015f,
-                center = Offset(faceCenterX - eyeSpacing, eyeY)
-            )
-            drawCircle(
-                color = eyeColor.copy(alpha = 0.4f),
-                radius = w * 0.015f,
-                center = Offset(faceCenterX + eyeSpacing, eyeY)
-            )
+            // 默认：根据 deviceState 绘制
+            when (deviceState) {
+                DeviceState.LISTENING -> {
+                    drawCircle(
+                        color = eyeColor.copy(alpha = blinkAlpha),
+                        radius = w * 0.025f,
+                        center = Offset(faceCenterX - eyeSpacing, eyeY)
+                    )
+                    drawCircle(
+                        color = eyeColor.copy(alpha = blinkAlpha),
+                        radius = w * 0.025f,
+                        center = Offset(faceCenterX + eyeSpacing, eyeY)
+                    )
+                    drawCircle(
+                        color = mouthColor.copy(alpha = 0.7f),
+                        radius = w * 0.015f,
+                        center = Offset(faceCenterX, mouthY)
+                    )
+                }
+                DeviceState.SPEAKING -> {
+                    drawArc(
+                        color = eyeColor,
+                        startAngle = 0f, sweepAngle = 180f, useCenter = false,
+                        topLeft = Offset(faceCenterX - eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                        size = Size(w * 0.04f, w * 0.02f),
+                        style = Stroke(width = w * 0.008f)
+                    )
+                    drawArc(
+                        color = eyeColor,
+                        startAngle = 0f, sweepAngle = 180f, useCenter = false,
+                        topLeft = Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY - w * 0.01f),
+                        size = Size(w * 0.04f, w * 0.02f),
+                        style = Stroke(width = w * 0.008f)
+                    )
+                    val mouthHeight = w * 0.01f + mouthOpen * w * 0.025f
+                    drawOval(
+                        color = mouthColor,
+                        topLeft = Offset(faceCenterX - w * 0.02f, mouthY - mouthHeight / 2),
+                        size = Size(w * 0.04f, mouthHeight)
+                    )
+                }
+                DeviceState.CONNECTING -> {
+                    drawCircle(
+                        color = eyeColor.copy(alpha = blinkAlpha),
+                        radius = w * 0.018f,
+                        center = Offset(faceCenterX - eyeSpacing, eyeY)
+                    )
+                    drawCircle(
+                        color = eyeColor.copy(alpha = blinkAlpha),
+                        radius = w * 0.018f,
+                        center = Offset(faceCenterX + eyeSpacing, eyeY)
+                    )
+                    val path = Path().apply {
+                        moveTo(faceCenterX - w * 0.03f, mouthY)
+                        cubicTo(
+                            faceCenterX - w * 0.015f, mouthY - w * 0.015f,
+                            faceCenterX - w * 0.005f, mouthY + w * 0.015f,
+                            faceCenterX, mouthY
+                        )
+                        cubicTo(
+                            faceCenterX + w * 0.005f, mouthY - w * 0.015f,
+                            faceCenterX + w * 0.015f, mouthY + w * 0.015f,
+                            faceCenterX + w * 0.03f, mouthY
+                        )
+                    }
+                    drawPath(
+                        path = path,
+                        color = mouthColor.copy(alpha = 0.6f),
+                        style = Stroke(width = w * 0.006f)
+                    )
+                }
+                else -> {
+                    drawCircle(
+                        color = eyeColor.copy(alpha = 0.4f),
+                        radius = w * 0.015f,
+                        center = Offset(faceCenterX - eyeSpacing, eyeY)
+                    )
+                    drawCircle(
+                        color = eyeColor.copy(alpha = 0.4f),
+                        radius = w * 0.015f,
+                        center = Offset(faceCenterX + eyeSpacing, eyeY)
+                    )
+                }
+            }
         }
     }
 }
