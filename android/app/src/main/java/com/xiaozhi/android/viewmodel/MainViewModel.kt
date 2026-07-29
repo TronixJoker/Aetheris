@@ -51,6 +51,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var isRunning = false
     private var audioChannelOpened = false
 
+    // VAD（语音活动检测）自动打断相关参数
+    // 当小智说话时，若检测到用户声音能量超过阈值并持续若干帧，自动打断
+    // 阈值较高（3000）以避免小智自己的 TTS 声音误触发（配合 AEC 回声消除）
+    private val vadEnergyThreshold = 3000f      // RMS 能量阈值（16-bit PCM）
+    private val vadTriggerFrames = 4            // 连续超阈值帧数才触发（约 80ms，更稳定）
+    private var vadOverThresholdCount = 0
+    // 打断后的冷却时间，避免连续打断
+    private var lastInterruptTimeMs = 0L
+    private val vadCooldownMs = 1500L
+
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
 
@@ -148,11 +158,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Observe audio recorder data
         viewModelScope.launch {
             audioRecorder.pcmData.collect { pcm ->
-                if (audioChannelOpened && _deviceState.value == DeviceState.LISTENING) {
-                    val encoded = opusCodec.encode(pcm)
-                    if (encoded != null) {
-                        webSocketManager.sendAudio(encoded)
+                when (_deviceState.value) {
+                    DeviceState.LISTENING -> {
+                        // 正常聆听：上传音频
+                        if (audioChannelOpened) {
+                            val encoded = opusCodec.encode(pcm)
+                            if (encoded != null) {
+                                webSocketManager.sendAudio(encoded)
+                            }
+                        }
                     }
+                    DeviceState.SPEAKING -> {
+                        // 小智说话时：检测用户声音，自动打断（VAD）
+                        if (detectUserInterruption(pcm)) {
+                            interruptSpeaking()
+                        }
+                    }
+                    else -> { /* IDLE / CONNECTING 不处理 */ }
                 }
             }
         }
@@ -205,11 +227,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     when (state) {
                         "start" -> {
                             _deviceState.value = DeviceState.SPEAKING
+                            // 重置播放器：清除上一轮打断后可能残留的音频，恢复播放
+                            audioPlayer.resetForNewPlayback()
+                            // 设置冷却期：TTS 开始后的 1.5 秒内不检测打断
+                            // 避免 TTS 第一帧冲击被误判为用户说话
+                            lastInterruptTimeMs = System.currentTimeMillis()
+                            // 保持/启动麦克风录音，用于 VAD 自动打断检测
+                            if (!audioRecorder.isRunning()) {
+                                audioRecorder.start()
+                            }
+                            vadOverThresholdCount = 0
                             addLog("AI 正在说话...")
                         }
                         "stop" -> {
                             _deviceState.value = DeviceState.IDLE
+                            // AI 说完后停止麦克风（节省电量）
+                            audioRecorder.stop()
                             addLog("AI 说话结束")
+                            // 自动连续对话：1 秒后自动重新进入聆听
+                            viewModelScope.launch {
+                                kotlinx.coroutines.delay(1000)
+                                // 仅在仍处于 IDLE 且连接正常时自动开启聆听
+                                if (_deviceState.value == DeviceState.IDLE &&
+                                    webSocketManager.connectionState.value == WebSocketManager.ConnectionState.CONNECTED &&
+                                    audioChannelOpened) {
+                                    addLog("🔄 自动继续聆听，可直接说话")
+                                    tryStartListeningInternal()
+                                }
+                            }
                         }
                         "sentence_start" -> {
                             val text = data["text"]?.jsonPrimitive?.content ?: ""
@@ -495,10 +540,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun interruptSpeaking() {
+        // 1. 通知服务器中止 TTS 下发
         webSocketManager.sendAbort()
+        // 2. 立即停止本地音频播放并清空缓冲（关键修复：否则已缓冲的 TTS 会继续播完）
+        audioPlayer.stopAndClear()
+        // 3. 切到聆听状态并重启麦克风
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
+        if (!audioRecorder.isRunning()) {
+            audioRecorder.start()
+        }
+        lastInterruptTimeMs = System.currentTimeMillis()
+        vadOverThresholdCount = 0
         addLog("打断说话，重新聆听...")
+    }
+
+    /**
+     * VAD：检测用户是否在说话（用于自动打断）。
+     * 基于 RMS 能量阈值 + 连续帧确认，避免噪声误触发。
+     * 注意：SPEAKING 期间麦克风需保持开启才能工作。
+     */
+    private fun detectUserInterruption(pcm: ShortArray): Boolean {
+        // 冷却期内不触发
+        val now = System.currentTimeMillis()
+        if (now - lastInterruptTimeMs < vadCooldownMs) {
+            vadOverThresholdCount = 0
+            return false
+        }
+
+        // 计算 RMS 能量
+        var sumSq = 0.0
+        for (s in pcm) {
+            val v = s.toDouble()
+            sumSq += v * v
+        }
+        val rms = Math.sqrt(sumSq / pcm.size).toFloat()
+
+        if (rms > vadEnergyThreshold) {
+            vadOverThresholdCount++
+            if (vadOverThresholdCount >= vadTriggerFrames) {
+                vadOverThresholdCount = 0
+                addLog("🔊 检测到用户说话，自动打断")
+                return true
+            }
+        } else {
+            // 能量回落，重置计数
+            vadOverThresholdCount = 0
+        }
+        return false
     }
 
     fun retryOta() {

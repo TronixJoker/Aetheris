@@ -37,6 +37,8 @@ class AudioRecorder(private val context: Context) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
+    fun isRunning(): Boolean = isRecording
+
     fun start(): Boolean {
         if (!hasPermission()) {
             Log.w(TAG, "No RECORD_AUDIO permission")
@@ -51,7 +53,7 @@ class AudioRecorder(private val context: Context) {
 
         try {
             audioRecord = AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.MIC)
+                .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(FORMAT)
@@ -61,6 +63,26 @@ class AudioRecorder(private val context: Context) {
                 )
                 .setBufferSizeInBytes(bufferSize)
                 .build()
+
+            // 尝试启用回声消除（AEC）、噪声抑制（NS）和自动增益（AGC）
+            // 减少小智自己的 TTS 声音被 VAD 误检测为用户说话
+            try {
+                val ar = audioRecord
+                if (ar != null) {
+                    val sessionId = ar.audioSessionId
+                    if (android.media.audiofx.AcousticEchoCanceler.isAvailable()) {
+                        android.media.audiofx.AcousticEchoCanceler.create(sessionId)?.enabled = true
+                    }
+                    if (android.media.audiofx.NoiseSuppressor.isAvailable()) {
+                        android.media.audiofx.NoiseSuppressor.create(sessionId)?.enabled = true
+                    }
+                    if (android.media.audiofx.AutomaticGainControl.isAvailable()) {
+                        android.media.audiofx.AutomaticGainControl.create(sessionId)?.enabled = true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Audio effects not available: ${e.message}")
+            }
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioRecord failed to initialize")

@@ -35,7 +35,7 @@ class AudioPlayer {
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -68,6 +68,57 @@ class AudioPlayer {
 
     fun enqueueAudio(pcmData: ShortArray) {
         bufferQueue.offer(pcmData)
+    }
+
+    /**
+     * 立即停止播放并清空所有已缓冲的音频（用于打断场景）。
+     * 不释放 AudioTrack，保持播放器存活以便下一轮 TTS 使用。
+     */
+    fun stopAndClear() {
+        bufferQueue.clear()
+        audioTrack?.apply {
+            try {
+                pause()
+                flush()
+            } catch (e: Exception) {
+                Log.w(TAG, "stopAndClear flush failed", e)
+            }
+        }
+        scope.launch { _isPlayingState.emit(false) }
+    }
+
+    /**
+     * 从中断状态恢复播放（用于打断后新一轮 TTS）。
+     */
+    fun resumePlayback() {
+        audioTrack?.apply {
+            try {
+                if (playState != AudioTrack.PLAYSTATE_PLAYING) {
+                    play()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "resumePlayback failed", e)
+            }
+        }
+        scope.launch { _isPlayingState.emit(true) }
+    }
+
+    /**
+     * 为新一轮 TTS 重置播放器：清空残留缓冲、flush 已写入数据、恢复播放。
+     * 用于 tts "start" 时确保上一轮打断后的残留音频不会先播出来。
+     */
+    fun resetForNewPlayback() {
+        bufferQueue.clear()
+        audioTrack?.apply {
+            try {
+                pause()
+                flush()
+                play()
+            } catch (e: Exception) {
+                Log.w(TAG, "resetForNewPlayback failed", e)
+            }
+        }
+        scope.launch { _isPlayingState.emit(true) }
     }
 
     fun stop() {

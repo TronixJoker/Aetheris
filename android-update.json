@@ -1,1 +1,1 @@
-{"versionCode": 53, "versionName": "1.4.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.4.3.apk", "changelog": "嘴巴改为D型自然嘴型，告别圆形嘴巴"}
+{"versionCode": 54, "versionName": "1.5.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.5.1.apk", "changelog": "支持随时打断小智说话（VAD自动检测），免按钮自动连续对话，启用回声消除/噪声抑制"}
