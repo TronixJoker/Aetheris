@@ -43,8 +43,7 @@ import com.xiaozhi.android.viewmodel.MainViewModel
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToActivation: () -> Unit
+    onNavigateToSettings: () -> Unit
 ) {
     val deviceState by viewModel.deviceState.collectAsStateWithLifecycle()
     val emotion by viewModel.emotion.collectAsStateWithLifecycle()
@@ -83,9 +82,6 @@ fun MainScreen(
                         }
                     }) {
                         Icon(Icons.Filled.Pets, contentDescription = "桌面宠物")
-                    }
-                    IconButton(onClick = onNavigateToActivation) {
-                        Icon(Icons.Filled.VerifiedUser, contentDescription = "激活")
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "设置")

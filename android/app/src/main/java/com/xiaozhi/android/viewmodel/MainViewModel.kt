@@ -537,7 +537,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val musicInfo = commandExecutor.searchMusicForPlay(musicQuery)
                                 if (musicInfo != null) {
                                     addLog("▶️ 播放: ${musicInfo.name} - ${musicInfo.artist}")
-                                    musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist)
+                                    musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist, musicInfo.headers)
                                     webSocketManager.sendSystemText("正在播放：${musicInfo.name}，歌手：${musicInfo.artist}")
                                 } else {
                                     addLog("⚠️ 未找到音乐")
@@ -1084,7 +1084,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val musicInfo = commandExecutor.searchMusicForPlay(musicQuery)
                     if (musicInfo != null) {
                         addLog("▶️ 播放: ${musicInfo.name} - ${musicInfo.artist}")
-                        musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist)
+                        musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist, musicInfo.headers)
                         webSocketManager.sendSystemText("正在播放：${musicInfo.name}，歌手：${musicInfo.artist}")
                     } else {
                         addLog("⚠️ 未找到音乐")

@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * 音乐播放管理器：在 APP 内部播放音乐，不跳转到其他应用。
- * 使用 Android MediaPlayer 播放网易云外链 URL。
+ *
+ * 支持两种播放源：
+ * 1. 直接URL（如网易云外链）- MediaPlayer 直接访问
+ * 2. 需自定义请求头的URL（如 B站音频流需 Referer）- 通过 [LocalAudioProxyServer] 本地代理转发
  */
 class MusicPlayerManager {
     companion object {
@@ -21,6 +24,7 @@ class MusicPlayerManager {
     }
 
     private var mediaPlayer: MediaPlayer? = null
+    private val proxyServer = LocalAudioProxyServer()
 
     private val _playState = MutableStateFlow(PlayState.IDLE)
     val playState: StateFlow<PlayState> = _playState.asStateFlow()
@@ -36,15 +40,33 @@ class MusicPlayerManager {
      * @param url 播放URL
      * @param songName 歌曲名
      * @param artist 歌手名
+     * @param headers 播放时附加的 HTTP 请求头（如 B站音频流的 Referer），为空则直接播放
      */
-    fun play(url: String, songName: String, artist: String) {
-        Log.d(TAG, "play: $songName - $artist, url=$url")
+    fun play(url: String, songName: String, artist: String, headers: Map<String, String> = emptyMap()) {
+        Log.d(TAG, "play: $songName - $artist, url=$url, headers=${headers.keys}")
         _playState.value = PlayState.LOADING
         _currentSong.value = songName
         _currentArtist.value = artist
 
         // 先释放旧的播放器
         mediaPlayer?.release()
+
+        // 决定最终播放 URL：有自定义头时通过本地代理转发
+        val playUrl = if (headers.isNotEmpty()) {
+            val root = proxyServer.start()
+            if (root == null) {
+                Log.e(TAG, "Failed to start local proxy, cannot play with headers")
+                _playState.value = PlayState.ERROR
+                _currentSong.value = null
+                _currentArtist.value = null
+                return
+            }
+            val proxyUrl = proxyServer.buildProxyUrl(url, headers)
+            Log.d(TAG, "Playing via local proxy: $proxyUrl")
+            proxyUrl
+        } else {
+            url
+        }
 
         try {
             mediaPlayer = MediaPlayer().apply {
@@ -54,7 +76,7 @@ class MusicPlayerManager {
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 )
-                setDataSource(url)
+                setDataSource(playUrl)
                 setOnPreparedListener { mp ->
                     Log.d(TAG, "MediaPlayer prepared, starting playback")
                     _playState.value = PlayState.PLAYING
@@ -137,7 +159,7 @@ class MusicPlayerManager {
     }
 
     /**
-     * 释放资源
+     * 释放资源（含本地代理服务器）
      */
     fun release() {
         try {
@@ -146,6 +168,7 @@ class MusicPlayerManager {
             Log.e(TAG, "Release failed: ${e.message}")
         }
         mediaPlayer = null
+        proxyServer.stop()
         _playState.value = PlayState.IDLE
         _currentSong.value = null
         _currentArtist.value = null

@@ -19,7 +19,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.xiaozhi.android.ui.screens.ActivationScreen
 import com.xiaozhi.android.ui.screens.MainScreen
 import com.xiaozhi.android.ui.screens.SettingsScreen
 import com.xiaozhi.android.ui.theme.XiaozhiTheme
@@ -89,22 +88,12 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                                 onNavigateToSettings = {
                                     navController.navigate("settings")
-                                },
-                                onNavigateToActivation = {
-                                    navController.navigate("activation")
                                 }
                             )
                         }
 
                         composable("settings") {
                             SettingsScreen(
-                                onNavigateBack = { navController.popBackStack() },
-                                viewModel = viewModel
-                            )
-                        }
-
-                        composable("activation") {
-                            ActivationScreen(
                                 onNavigateBack = { navController.popBackStack() },
                                 viewModel = viewModel
                             )

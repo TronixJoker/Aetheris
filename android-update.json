@@ -1,1 +1,1 @@
-{"versionCode": 67, "versionName": "1.8.3", "downloadUrl": "https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.8.3/xiaozhi-v1.8.3.apk", "changelog": "音乐在APP内直接播放，不跳转其他应用；新增音乐播放控制条（暂停/继续/停止）；接入网易云音乐外链播放API"}
+{"versionCode": 68, "versionName": "1.8.4", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.4.apk", "changelog": "解决音乐版权无法播放问题：切换为B站音乐视频音频流作为主音乐源（覆盖广、版权限制少），网易云外链作为兜底；新增本地HTTP代理服务器解决B站音频流Referer头限制，支持流式播放与seek跳转；删除激活页面，默认已激活"}

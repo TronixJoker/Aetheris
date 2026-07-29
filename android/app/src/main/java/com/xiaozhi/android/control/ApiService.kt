@@ -501,15 +501,156 @@ class ApiService {
     }
 
     /**
-     * 搜索音乐并返回第一首歌的播放信息（歌名、歌手、播放URL）。
-     * 播放URL使用网易云外链接口：https://music.163.com/song/media/outer/url?id={id}.mp3
-     * 该接口可直接用于 MediaPlayer 播放，无需 API Key。
+     * 搜索音乐并返回第一首歌的播放信息。
+     *
+     * 策略（多源回退，规避版权限制）：
+     * 1. 优先：B站音乐视频音频流（覆盖最全，几乎不受版权限制）
+     * 2. 兜底：网易云音乐外链接口（部分歌曲可播）
      *
      * @param query 歌曲名或歌手名
-     * @return MusicInfo 包含歌曲ID、名称、歌手和播放URL；失败返回 null
+     * @return MusicInfo 包含歌曲名称、歌手和播放URL；失败返回 null
      */
     suspend fun searchMusicForPlay(query: String): MusicInfo? {
         if (query.isBlank()) return null
+
+        // 优先使用 B 站音乐源（覆盖广、版权限制少）
+        val biliResult = searchMusicBilibili(query)
+        if (biliResult != null) {
+            Log.d(TAG, "Bilibili music source OK: ${biliResult.name}")
+            return biliResult
+        }
+
+        // 兜底：网易云外链
+        return searchMusicNetease(query)
+    }
+
+    /**
+     * B站音乐源：通过搜索B站音乐视频，获取其 DASH 音频流URL。
+     * 适用于 MediaPlayer 直接播放（需配合 Referer 请求头）。
+     *
+     * 流程：搜索视频 → 取 bvid → 查 cid → 查 playurl(DASH) → 取音频流URL
+     */
+    private suspend fun searchMusicBilibili(query: String): MusicInfo? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Step 1: 搜索B站视频
+                val searchUrl = "https://api.bilibili.com/x/web-interface/wbi/search/type?" +
+                    "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
+                    "&page=1&page_size=5"
+                val searchBody = httpGet(searchUrl, mapOf("Referer" to "https://search.bilibili.com"))
+                if (searchBody.isBlank()) return@withContext null
+
+                // 解析前几个视频的 bvid 和 title
+                data class BiliVideo(val bvid: String, val title: String)
+                val videos = mutableListOf<BiliVideo>()
+                // bvid 和 title 在 JSON 中按出现顺序匹配
+                val bvidRegex = Regex(""""bvid"\s*:\s*"(BV[A-Za-z0-9]+)"""")
+                val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val bvids = bvidRegex.findAll(searchBody).map { it.groupValues[1] }.toList()
+                val titles = titleRegex.findAll(searchBody).map {
+                    it.groupValues[1]
+                        .replace("<em class=\"keyword\">", "")
+                        .replace("</em>", "")
+                        .replace("\\\"", "\"")
+                        .replace("\\/", "/")
+                }.toList()
+                val n = minOf(bvids.size, titles.size, 5)
+                for (i in 0 until n) {
+                    videos.add(BiliVideo(bvids[i], titles[i]))
+                }
+                if (videos.isEmpty()) return@withContext null
+
+                Log.d(TAG, "Bilibili search found ${videos.size} videos, trying to get audio stream")
+
+                // Step 2: 逐个尝试获取音频流
+                for (video in videos) {
+                    val audioUrl = getBilibiliAudioStream(video.bvid)
+                    if (audioUrl != null) {
+                        // 清理标题作为歌曲名：取 " - " 前的部分或整体
+                        val cleanTitle = video.title
+                            .replace(Regex("【[^】]*】"), "")
+                            .replace(Regex("\\[[^\\]]*\\]"), "")
+                            .trim()
+                        // 尝试解析 "歌手 - 歌名" 格式
+                        val parts = cleanTitle.split(" - ", limit = 2)
+                        val (songName, artist) = if (parts.size == 2) {
+                            parts[1].trim() to parts[0].trim()
+                        } else {
+                            cleanTitle to "B站音乐"
+                        }
+
+                        Log.d(TAG, "Bilibili audio stream OK: $songName - $artist")
+                        return@withContext MusicInfo(
+                            id = 0L,
+                            name = songName,
+                            artist = artist,
+                            playUrl = audioUrl,
+                            // B站音频流必须带 Referer 否则 403
+                            headers = mapOf("Referer" to "https://www.bilibili.com")
+                        )
+                    }
+                }
+                null
+            } catch (e: Exception) {
+                Log.e(TAG, "searchMusicBilibili failed: ${e.message}")
+                null
+            }
+        }
+    }
+
+    /**
+     * 获取B站视频的 DASH 音频流URL。
+     * @param bvid 视频BV号
+     * @return 音频流URL，失败返回 null
+     */
+    private suspend fun getBilibiliAudioStream(bvid: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Step 1: 通过 bvid 获取 cid
+                val viewUrl = "https://api.bilibili.com/x/web-interface/view?bvid=$bvid"
+                val viewBody = httpGet(viewUrl, mapOf("Referer" to "https://www.bilibili.com"))
+                if (viewBody.isBlank()) return@withContext null
+                val cidRegex = Regex(""""cid"\s*:\s*(\d+)""")
+                val cidMatch = cidRegex.find(viewBody) ?: return@withContext null
+                val cid = cidMatch.groupValues[1]
+
+                // Step 2: 获取播放地址（DASH 格式）
+                val playUrl = "https://api.bilibili.com/x/player/playurl?" +
+                    "bvid=$bvid&cid=$cid&fnval=16&qn=16"
+                val playBody = httpGet(playUrl, mapOf("Referer" to "https://www.bilibili.com"))
+                if (playBody.isBlank()) return@withContext null
+
+                // 解析 DASH audio 列表，取最高码率
+                val audioBlockRegex = Regex(""""audio"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+                val audioBlock = audioBlockRegex.find(playBody)?.groupValues?.get(1)
+                    ?: return@withContext null
+
+                // 提取所有 baseUrl，并匹配 bandwidth 取最大
+                val audioItemRegex = Regex("""\{[^{}]*"bandwidth"\s*:\s*(\d+)[^{}]*"baseUrl"\s*:\s*"([^"]+)"[^{}]*\}""")
+                var bestUrl: String? = null
+                var bestBand = -1L
+                for (match in audioItemRegex.findAll(audioBlock)) {
+                    val band = match.groupValues[1].toLongOrNull() ?: 0L
+                    val url = match.groupValues[2]
+                        .replace("\\/", "/")
+                        .replace("\\u0026", "&")
+                    if (band > bestBand) {
+                        bestBand = band
+                        bestUrl = url
+                    }
+                }
+                bestUrl
+            } catch (e: Exception) {
+                Log.e(TAG, "getBilibiliAudioStream failed: ${e.message}")
+                null
+            }
+        }
+    }
+
+    /**
+     * 网易云音乐外链（兜底方案，部分歌曲受版权限制无法播放）。
+     */
+    private suspend fun searchMusicNetease(query: String): MusicInfo? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = "https://music.163.com/api/search/get?" +
@@ -518,7 +659,6 @@ class ApiService {
                 val body = httpGet(url, mapOf("Referer" to "https://music.163.com"))
                 if (body.isBlank()) return@withContext null
 
-                // 提取歌曲ID和名称
                 val idRegex = Regex(""""id"\s*:\s*(\d+)""")
                 val nameRegex = Regex(""""name"\s*:\s*"((?:[^"\\]|\\.)*)"""")
                 val artistRegex = Regex(""""artistName"\s*:\s*"([^"]+)"""")
@@ -531,17 +671,17 @@ class ApiService {
                 val songName = nameMatch?.groupValues[1]?.replace("\\\"", "\"") ?: "未知歌曲"
                 val artist = artistMatch?.groupValues[1] ?: "未知歌手"
 
-                // 网易云外链播放URL，可直接用于 MediaPlayer
                 val playUrl = "https://music.163.com/song/media/outer/url?id=$songId.mp3"
 
                 MusicInfo(
                     id = songId,
                     name = songName,
                     artist = artist,
-                    playUrl = playUrl
+                    playUrl = playUrl,
+                    headers = emptyMap()
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "searchMusicForPlay failed: ${e.message}")
+                Log.e(TAG, "searchMusicNetease failed: ${e.message}")
                 null
             }
         }
@@ -550,10 +690,12 @@ class ApiService {
 
 /**
  * 音乐信息数据类
+ * @param headers 播放时需附加的 HTTP 请求头（如 B站音频流需要 Referer）
  */
 data class MusicInfo(
     val id: Long,
     val name: String,
     val artist: String,
-    val playUrl: String
+    val playUrl: String,
+    val headers: Map<String, String> = emptyMap()
 )
