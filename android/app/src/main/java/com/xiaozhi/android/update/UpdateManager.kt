@@ -30,8 +30,6 @@ class UpdateManager(private val context: Context) {
             "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json"
         private val UPDATE_INFO_FALLBACK_URLS = listOf(
             "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main",
-            "https://fastly.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
-            "https://gcore.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
             "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
