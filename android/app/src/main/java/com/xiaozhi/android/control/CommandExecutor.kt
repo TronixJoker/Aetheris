@@ -99,17 +99,12 @@ class CommandExecutor(private val context: Context) {
         if (phone.isEmpty()) return "收件人号码为空"
         if (message.isBlank()) return "短信内容为空"
         return try {
-            // 直接打开短信应用并预填内容和收件人
             val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra("sms_body", message)
             }
-            if (intent.resolveActivity(context.packageManager) != null) {
-                ContextCompat.startActivity(context, intent, null)
-                "已打开短信应用，收件人：$phone，内容：$message，请确认发送"
-            } else {
-                "当前设备没有可用的短信应用"
-            }
+            context.startActivity(intent)
+            "已打开短信应用，收件人：$phone，内容：$message，请确认发送"
         } catch (e: Exception) {
             Log.e(TAG, "sendSms failed: ${e.message}")
             "发送短信失败：${e.message}"
@@ -127,12 +122,8 @@ class CommandExecutor(private val context: Context) {
             val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            if (intent.resolveActivity(context.packageManager) != null) {
-                ContextCompat.startActivity(context, intent, null)
-                "已打开拨号界面，号码：$phone"
-            } else {
-                "当前设备没有可用的拨号应用"
-            }
+            context.startActivity(intent)
+            "已打开拨号界面，号码：$phone"
         } catch (e: Exception) {
             Log.e(TAG, "makeCall failed: ${e.message}")
             "拨号失败：${e.message}"
@@ -148,52 +139,49 @@ class CommandExecutor(private val context: Context) {
     fun setAlarm(hour: Int, minute: Int, message: String): String {
         val h = hour.coerceIn(0, 23)
         val m = minute.coerceIn(0, 59)
-        return try {
-            // 直接使用系统闹钟 Intent，这是最可靠的方式
+        val label = message.ifBlank { "小智闹钟" }
+        
+        // 方案一：直接尝试 ACTION_SET_ALARM（不依赖 resolveActivity，Android 11+ 可能返回 null）
+        try {
             val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(AlarmClock.EXTRA_HOUR, h)
                 putExtra(AlarmClock.EXTRA_MINUTES, m)
-                putExtra(AlarmClock.EXTRA_MESSAGE, message.ifBlank { "小智闹钟" })
-                // 不跳过 UI，让用户确认
+                putExtra(AlarmClock.EXTRA_MESSAGE, label)
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
-            
-            // 检查是否有应用能处理这个 Intent
-            if (intent.resolveActivity(context.packageManager) != null) {
-                ContextCompat.startActivity(context, intent, null)
-                return "已打开闹钟设置界面：${"%02d".format(h)}:${"%02d".format(m)}，请在界面上确认闹钟"
-            } else {
-                // 没有系统闹钟应用，尝试打开时钟应用
-                val clockIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                // 查找时钟应用
-                val pm = context.packageManager
-                val clockApps = pm.queryIntentActivities(
-                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
-                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-                ).filter { it.activityInfo.packageName.contains("clock", ignoreCase = true) || 
-                            it.activityInfo.packageName.contains("alarm", ignoreCase = true) ||
-                            it.activityInfo.packageName.contains("deskclock", ignoreCase = true) }
-                
-                if (clockApps.isNotEmpty()) {
-                    val launchIntent = pm.getLaunchIntentForPackage(clockApps[0].activityInfo.packageName)
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        ContextCompat.startActivity(context, launchIntent, null)
-                        return "已打开时钟应用，请手动设置闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
-                    }
-                }
-                
-                // 最后回退：打开设置
-                return "当前设备没有可用的闹钟应用，请安装时钟应用或手动设置闹钟"
-            }
+            context.startActivity(intent)
+            return "已打开闹钟设置界面：${"%02d".format(h)}:${"%02d".format(m)}，请在界面上确认闹钟"
+        } catch (e: android.content.ActivityNotFoundException) {
+            Log.w(TAG, "ACTION_SET_ALARM not available: ${e.message}")
         } catch (e: Exception) {
-            Log.e(TAG, "setAlarm failed: ${e.message}")
-            "设置闹钟失败：${e.message}"
+            Log.w(TAG, "ACTION_SET_ALARM failed: ${e.message}")
         }
+
+        // 方案二：尝试常见时钟应用的包名直接启动
+        val clockPackages = listOf(
+            "com.android.deskclock",           // 原生/AOSP
+            "com.google.android.deskclock",     // Google Pixel
+            "com.sec.android.app.clockpackage", // 三星
+            "com.miui.clock",                   // 小米
+            "com.huawei.deskclock",             // 华为
+            "com.android.systemui"              // 部分系统
+        )
+        for (pkg in clockPackages) {
+            try {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    return "已打开时钟应用，请手动设置闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Clock package $pkg not available: ${e.message}")
+            }
+        }
+
+        // 方案三：打开应用列表让用户自己找
+        return "未找到系统闹钟应用，请手动设置闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
     }
 
     /**
@@ -203,20 +191,21 @@ class CommandExecutor(private val context: Context) {
      */
     fun setTimer(seconds: Int, message: String): String {
         val s = seconds.coerceAtLeast(1)
+        val label = message.ifBlank { "小智定时器" }
+        
+        // 直接尝试 ACTION_SET_TIMER（不依赖 resolveActivity）
         return try {
-            // 先检查系统是否支持 ACTION_SET_TIMER
             val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(AlarmClock.EXTRA_LENGTH, s)
-                putExtra(AlarmClock.EXTRA_MESSAGE, message.ifBlank { "小智定时器" })
+                putExtra(AlarmClock.EXTRA_MESSAGE, label)
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
-            if (intent.resolveActivity(context.packageManager) != null) {
-                ContextCompat.startActivity(context, intent, null)
-                return "已设置定时器：${s}秒 ${message.ifBlank { "" }}"
-            } else {
-                return "当前设备不支持设置定时器"
-            }
+            context.startActivity(intent)
+            "已设置定时器：${s}秒 ${label}"
+        } catch (e: android.content.ActivityNotFoundException) {
+            Log.w(TAG, "ACTION_SET_TIMER not available: ${e.message}")
+            "当前设备不支持设置定时器"
         } catch (e: Exception) {
             Log.e(TAG, "setTimer failed: ${e.message}")
             "设置定时器失败：${e.message}"
