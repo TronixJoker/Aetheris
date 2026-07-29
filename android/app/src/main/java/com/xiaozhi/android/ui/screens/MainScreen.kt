@@ -558,27 +558,81 @@ private fun DrawScope.drawFaceExpression(
         )
     }
 
-    // 辅助：自然嘴巴（说话时根据 mouthOpen 开合）
+    // 辅助：自然 D 型嘴巴（说话时下方开口，像真人嘴型）
     fun drawSmileMouth(cx: Float, cy: Float, width: Float, open: Float = 0f) {
-        val baseHeight = width * 0.15f
-        val openHeight = baseHeight + open * width * 0.25f
+        val halfW = width / 2
+        val smileH = width * 0.12f
+        val openH = open * width * 0.3f
         if (open > 0.1f && deviceState == DeviceState.SPEAKING) {
-            // 说话时：椭圆开合 + 微笑弧度
-            drawOval(
-                color = mouthColor,
-                topLeft = Offset(cx - width / 2, cy - openHeight / 2),
-                size = Size(width, openHeight)
-            )
+            // 说话时：D 型嘴——上方微笑弧线 + 下方开口
+            val mouthPath = Path().apply {
+                // 左上起点
+                moveTo(cx - halfW, cy)
+                // 上弧线（微笑）
+                cubicTo(
+                    cx - halfW * 0.5f, cy - smileH,
+                    cx + halfW * 0.5f, cy - smileH,
+                    cx + halfW, cy
+                )
+                // 右下弧线（开口）
+                cubicTo(
+                    cx + halfW * 0.6f, cy + openH,
+                    cx - halfW * 0.6f, cy + openH,
+                    cx - halfW, cy
+                )
+                close()
+            }
+            drawPath(mouthPath, mouthColor)
         } else {
-            // 静态：弯月微笑
+            // 静态：弯月微笑（两端上翘）
             drawArc(
                 color = mouthColor,
                 startAngle = 180f, sweepAngle = 180f, useCenter = false,
-                topLeft = Offset(cx - width / 2, cy - baseHeight / 2),
-                size = Size(width, baseHeight),
+                topLeft = Offset(cx - halfW, cy - smileH),
+                size = Size(width, smileH * 2),
                 style = softStroke
             )
         }
+    }
+
+    // 辅助：说话时的自然张合嘴（独立的上下唇）
+    fun drawTalkingMouth(cx: Float, cy: Float, width: Float, open: Float) {
+        val halfW = width / 2
+        val lipH = width * 0.06f
+        val gap = open * width * 0.25f
+        // 上唇：微笑弧线
+        val upperPath = Path().apply {
+            moveTo(cx - halfW, cy - gap * 0.3f)
+            cubicTo(
+                cx - halfW * 0.4f, cy - gap * 0.3f - lipH,
+                cx + halfW * 0.4f, cy - gap * 0.3f - lipH,
+                cx + halfW, cy - gap * 0.3f
+            )
+        }
+        drawPath(upperPath, mouthColor, style = softStroke)
+        // 下唇：微弯
+        val lowerPath = Path().apply {
+            moveTo(cx - halfW, cy + gap * 0.5f)
+            cubicTo(
+                cx - halfW * 0.4f, cy + gap * 0.5f + lipH * 0.6f,
+                cx + halfW * 0.4f, cy + gap * 0.5f + lipH * 0.6f,
+                cx + halfW, cy + gap * 0.5f
+            )
+        }
+        drawPath(lowerPath, mouthColor, style = softStroke)
+    }
+
+    // 辅助：自然下弯嘴（伤心）
+    fun drawFrownMouth(cx: Float, cy: Float, width: Float) {
+        val halfW = width / 2
+        val h = width * 0.1f
+        drawArc(
+            color = mouthColor,
+            startAngle = 0f, sweepAngle = 180f, useCenter = false,
+            topLeft = Offset(cx - halfW, cy - h),
+            size = Size(width, h * 2),
+            style = softStroke
+        )
     }
 
     // 如果有特定情绪，优先绘制情绪表情
@@ -668,9 +722,12 @@ private fun DrawScope.drawFaceExpression(
                 Offset(faceCenterX - eyeSpacing - w * 0.022f, eyeY + w * 0.02f))
             drawCircle(Color(0xFFFFB6C1).copy(alpha = 0.8f), w * 0.028f,
                 Offset(faceCenterX + eyeSpacing + w * 0.022f, eyeY + w * 0.02f))
-            // 小嘴
-            drawCircle(mouthColor.copy(alpha = 0.7f), w * 0.01f,
-                Offset(faceCenterX, mouthY))
+            // 小嘴：害羞的微笑
+            drawArc(mouthColor.copy(alpha = 0.7f),
+                startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                topLeft = Offset(faceCenterX - w * 0.015f, mouthY - w * 0.008f),
+                size = Size(w * 0.03f, w * 0.016f),
+                style = thinStroke)
         }
         "curious" -> {
             // 好奇：大圆眼 + 问号嘴
@@ -702,10 +759,22 @@ private fun DrawScope.drawFaceExpression(
                 Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY + w * 0.02f),
                 Offset(faceCenterX + eyeSpacing + w * 0.02f, eyeY - w * 0.02f),
                 strokeWidth = thinStroke.width, cap = thinStroke.cap)
-            // 大张嘴
-            drawOval(mouthColor,
-                topLeft = Offset(faceCenterX - w * 0.025f, mouthY - w * 0.02f),
-                size = Size(w * 0.05f, w * 0.04f))
+            // 大张嘴：D 型
+            val deadPath = Path().apply {
+                moveTo(faceCenterX - w * 0.025f, mouthY - w * 0.005f)
+                cubicTo(
+                    faceCenterX - w * 0.015f, mouthY - w * 0.02f,
+                    faceCenterX + w * 0.015f, mouthY - w * 0.02f,
+                    faceCenterX + w * 0.025f, mouthY - w * 0.005f
+                )
+                cubicTo(
+                    faceCenterX + w * 0.02f, mouthY + w * 0.03f,
+                    faceCenterX - w * 0.02f, mouthY + w * 0.03f,
+                    faceCenterX - w * 0.025f, mouthY - w * 0.005f
+                )
+                close()
+            }
+            drawPath(deadPath, mouthColor)
         }
         "kiss" -> {
             // 飞吻：眨眼 + 嘴唇
@@ -714,14 +783,34 @@ private fun DrawScope.drawFaceExpression(
                 Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY),
                 Offset(faceCenterX + eyeSpacing + w * 0.02f, eyeY),
                 strokeWidth = softStroke.width, cap = softStroke.cap)
-            // 嘴唇（两个椭圆）
-            drawOval(Color(0xFFFF6B9D),
-                topLeft = Offset(faceCenterX - w * 0.02f, mouthY - w * 0.012f),
-                size = Size(w * 0.04f, w * 0.024f))
-            drawLine(Color(0xFFFF1493),
-                Offset(faceCenterX - w * 0.02f, mouthY),
-                Offset(faceCenterX + w * 0.02f, mouthY),
-                strokeWidth = thinStroke.width, cap = thinStroke.cap)
+            // 嘴唇：心形嘴
+            val lipPath = Path().apply {
+                val cx = faceCenterX
+                val cy = mouthY
+                moveTo(cx - w * 0.02f, cy - w * 0.003f)
+                cubicTo(
+                    cx - w * 0.02f, cy - w * 0.015f,
+                    cx, cy - w * 0.012f,
+                    cx, cy - w * 0.003f
+                )
+                cubicTo(
+                    cx, cy - w * 0.012f,
+                    cx + w * 0.02f, cy - w * 0.015f,
+                    cx + w * 0.02f, cy - w * 0.003f
+                )
+                cubicTo(
+                    cx + w * 0.018f, cy + w * 0.01f,
+                    cx, cy + w * 0.015f,
+                    cx, cy + w * 0.015f
+                )
+                cubicTo(
+                    cx, cy + w * 0.015f,
+                    cx - w * 0.018f, cy + w * 0.01f,
+                    cx - w * 0.02f, cy - w * 0.003f
+                )
+                close()
+            }
+            drawPath(lipPath, Color(0xFFFF6B9D))
         }
         "smirk" -> {
             // 坏笑：圆眼 + 单边上扬
@@ -818,10 +907,22 @@ private fun DrawScope.drawFaceExpression(
                 Offset(faceCenterX + eyeSpacing + w * 0.025f, eyeY - w * 0.035f),
                 Offset(faceCenterX + eyeSpacing - w * 0.015f, eyeY - w * 0.015f),
                 strokeWidth = softStroke.width, cap = softStroke.cap)
-            // 张大嘴
-            drawOval(Color(0xFFFF3344),
-                topLeft = Offset(faceCenterX - w * 0.025f, mouthY - w * 0.015f),
-                size = Size(w * 0.05f, w * 0.03f))
+            // 张大嘴：红色 D 型怒吼
+            val ragePath = Path().apply {
+                moveTo(faceCenterX - w * 0.025f, mouthY - w * 0.008f)
+                cubicTo(
+                    faceCenterX - w * 0.01f, mouthY - w * 0.02f,
+                    faceCenterX + w * 0.01f, mouthY - w * 0.02f,
+                    faceCenterX + w * 0.025f, mouthY - w * 0.008f
+                )
+                cubicTo(
+                    faceCenterX + w * 0.02f, mouthY + w * 0.025f,
+                    faceCenterX - w * 0.02f, mouthY + w * 0.025f,
+                    faceCenterX - w * 0.025f, mouthY - w * 0.008f
+                )
+                close()
+            }
+            drawPath(ragePath, Color(0xFFFF3344))
         }
         "depressed" -> {
             // 抑郁：半闭眼 + 大下弯嘴
@@ -898,30 +999,44 @@ private fun DrawScope.drawFaceExpression(
             // 惊讶：大圆眼 + O型嘴
             drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.03f)
             drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.03f)
-            if (deviceState == DeviceState.SPEAKING) {
-                drawCircle(
-                    color = mouthColor,
-                    radius = w * 0.025f + mouthOpen * w * 0.015f,
-                    center = Offset(faceCenterX, mouthY)
+            // 惊讶嘴：上窄下宽的 D 型开口
+            val surpriseOpen = if (deviceState == DeviceState.SPEAKING) mouthOpen else 0f
+            val supPath = Path().apply {
+                moveTo(faceCenterX - w * 0.015f, mouthY - w * 0.008f)
+                cubicTo(
+                    faceCenterX - w * 0.02f, mouthY - w * 0.015f,
+                    faceCenterX + w * 0.02f, mouthY - w * 0.015f,
+                    faceCenterX + w * 0.015f, mouthY - w * 0.008f
                 )
-            } else {
-                drawCircle(
-                    color = mouthColor,
-                    radius = w * 0.02f,
-                    center = Offset(faceCenterX, mouthY)
+                cubicTo(
+                    faceCenterX + w * 0.018f, mouthY + w * 0.015f + surpriseOpen * w * 0.02f,
+                    faceCenterX - w * 0.018f, mouthY + w * 0.015f + surpriseOpen * w * 0.02f,
+                    faceCenterX - w * 0.015f, mouthY - w * 0.008f
                 )
+                close()
             }
+            drawPath(supPath, mouthColor)
         }
         "fearful", "worried", "scared" -> {
             // 担心/害怕：稍大眼 + 抖动嘴
             drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.025f)
             drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.025f)
-            // 嘴巴微张
-            drawOval(
-                color = mouthColor.copy(alpha = 0.8f),
-                topLeft = Offset(faceCenterX - w * 0.015f, mouthY - w * 0.01f),
-                size = Size(w * 0.03f, w * 0.025f)
-            )
+            // 嘴巴微张：D 型小开口
+            val worryPath = Path().apply {
+                moveTo(faceCenterX - w * 0.015f, mouthY - w * 0.005f)
+                cubicTo(
+                    faceCenterX - w * 0.01f, mouthY - w * 0.012f,
+                    faceCenterX + w * 0.01f, mouthY - w * 0.012f,
+                    faceCenterX + w * 0.015f, mouthY - w * 0.005f
+                )
+                cubicTo(
+                    faceCenterX + w * 0.012f, mouthY + w * 0.015f,
+                    faceCenterX - w * 0.012f, mouthY + w * 0.015f,
+                    faceCenterX - w * 0.015f, mouthY - w * 0.005f
+                )
+                close()
+            }
+            drawPath(worryPath, mouthColor.copy(alpha = 0.8f))
         }
         "disgusted" -> {
             // 厌恶：波浪眼 + 撇嘴
@@ -1005,12 +1120,22 @@ private fun DrawScope.drawFaceExpression(
                 end = Offset(faceCenterX + eyeSpacing + w * 0.02f, eyeY),
                 strokeWidth = softStroke.width, cap = softStroke.cap
             )
-            // 小嘴微张
-            drawOval(
-                color = mouthColor.copy(alpha = 0.5f),
-                topLeft = Offset(faceCenterX - w * 0.01f, mouthY - w * 0.008f),
-                size = Size(w * 0.02f, w * 0.016f)
-            )
+            // 小嘴微张：自然小开口
+            val sleepyPath = Path().apply {
+                moveTo(faceCenterX - w * 0.012f, mouthY - w * 0.003f)
+                cubicTo(
+                    faceCenterX - w * 0.008f, mouthY - w * 0.01f,
+                    faceCenterX + w * 0.008f, mouthY - w * 0.01f,
+                    faceCenterX + w * 0.012f, mouthY - w * 0.003f
+                )
+                cubicTo(
+                    faceCenterX + w * 0.01f, mouthY + w * 0.008f,
+                    faceCenterX - w * 0.01f, mouthY + w * 0.008f,
+                    faceCenterX - w * 0.012f, mouthY - w * 0.003f
+                )
+                close()
+            }
+            drawPath(sleepyPath, mouthColor.copy(alpha = 0.5f))
         }
         "wink" -> {
             // 眨眼：一只眼闭一只眼睁
