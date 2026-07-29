@@ -1,1 +1,1 @@
-{"versionCode": 43, "versionName": "1.3.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.3.2.apk", "changelog": "1. 删除不合适的手臂绘制代码；2. 面部表情精确定位到黑色屏幕核心区域中心(0.497w, 0.254h)，确保眼睛和嘴巴居中显示在脸部屏幕内；3. 保留头部摇摆肢体动作（以屏幕中心为轴心）"}
+{"versionCode": 44, "versionName": "1.3.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.3.3.apk", "changelog": "1. 替换2D宠物图片为新的机器人图（new_robot.png）；2. 像素分析精确居中面部表情到黑色屏幕区域；3. 删除不合适的手臂绘制，保留身体旋转/浮动/抖动等肢体动作"}
