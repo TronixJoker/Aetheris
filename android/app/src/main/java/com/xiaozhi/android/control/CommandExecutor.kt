@@ -15,6 +15,48 @@ import androidx.core.content.ContextCompat
 class CommandExecutor(private val context: Context) {
     companion object {
         private const val TAG = "CommandExecutor"
+
+        /**
+         * 检查是否拥有设置精确闹钟的权限。
+         * 在 Android 12+ (API 31+) 中，这需要 SCHEDULE_EXACT_ALARM 权限。
+         */
+        fun canScheduleExactAlarms(context: Context): Boolean {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            return try {
+                alarmManager.canScheduleExactAlarms()
+            } catch (e: Exception) {
+                Log.w(TAG, "canScheduleExactAlarms failed: ${e.message}")
+                false
+            }
+        }
+
+        /**
+         * 打开系统设置页面，引导用户开启精确闹钟权限。
+         */
+        fun openExactAlarmSettings(context: Context) {
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                // Fallback for older versions or if action not available
+                val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallbackIntent)
+            }
+        }
+    }
+
+    /**
+     * 检查权限是否授予
+     */
+    private fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     /**
@@ -91,13 +133,17 @@ class CommandExecutor(private val context: Context) {
         if (phone.isEmpty()) return "收件人号码为空"
         if (message.isBlank()) return "短信内容为空"
         return try {
-            // 直接打开短信应用并预填内容和收件人，更安全（不需要 SEND_SMS 权限）
+            // 直接打开短信应用并预填内容和收件人
             val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra("sms_body", message)
             }
-            ContextCompat.startActivity(context, intent, null)
-            "已打开短信应用，收件人：$phone，内容：$message，请确认发送"
+            if (intent.resolveActivity(context.packageManager) != null) {
+                ContextCompat.startActivity(context, intent, null)
+                "已打开短信应用，收件人：$phone，内容：$message，请确认发送"
+            } else {
+                "当前设备没有可用的短信应用"
+            }
         } catch (e: Exception) {
             Log.e(TAG, "sendSms failed: ${e.message}")
             "发送短信失败：${e.message}"
@@ -115,8 +161,12 @@ class CommandExecutor(private val context: Context) {
             val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            ContextCompat.startActivity(context, intent, null)
-            "已打开拨号界面，号码：$phone"
+            if (intent.resolveActivity(context.packageManager) != null) {
+                ContextCompat.startActivity(context, intent, null)
+                "已打开拨号界面，号码：$phone"
+            } else {
+                "当前设备没有可用的拨号应用"
+            }
         } catch (e: Exception) {
             Log.e(TAG, "makeCall failed: ${e.message}")
             "拨号失败：${e.message}"
@@ -133,15 +183,61 @@ class CommandExecutor(private val context: Context) {
         val h = hour.coerceIn(0, 23)
         val m = minute.coerceIn(0, 59)
         return try {
-            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+            // 检查是否拥有设置精确闹钟的权限
+            if (!canScheduleExactAlarms(context)) {
+                // 没有权限，引导用户去设置
+                openExactAlarmSettings(context)
+                return "⚠️ 需要开启精确闹钟权限才能自动设置。已为您跳转至设置页面，请开启权限后重试。同时也为您唤起了闹钟设置界面。"
+            }
+
+            // 方案一：尝试使用 AlarmManager 设置精确闹钟
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val cal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, h)
+                set(java.util.Calendar.MINUTE, m)
+                set(java.util.Calendar.SECOND, 0)
+                // 如果设置的时间已过，则安排在明天
+                if (before(java.util.Calendar.getInstance())) {
+                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            val calendarIntent = android.content.Intent(Intent.ACTION_MAIN).apply {
+                putExtra("android.intent.extra.alarm.HOUR", h)
+                putExtra("android.intent.extra.alarm.MINUTES", m)
+                putExtra("android.intent.extra.alarm.MESSAGE", message.ifBlank { "小智闹钟" })
+            }
+            val pi = android.app.PendingIntent.getActivity(
+                context,
+                0,
+                calendarIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            try {
+                alarmManager.setAlarmClock(
+                    android.app.AlarmManager.AlarmClockInfo(cal.timeInMillis, pi),
+                    pi
+                )
+                return "✅ 已成功设置闹钟：${"%02d".format(h)}:${"%02d".format(m)} ${message.ifBlank { "" }}"
+            } catch (e: SecurityException) {
+                Log.w(TAG, "setAlarm via AlarmManager failed (missing permission), fallback to intent: ${e.message}")
+            } catch (e: Exception) {
+                Log.w(TAG, "setAlarm via AlarmManager failed, fallback to intent: ${e.message}")
+            }
+
+            // 方案二：回退方案，使用 Intent 唤起系统闹钟界面让用户手动确认
+            val intent2 = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(AlarmClock.EXTRA_HOUR, h)
                 putExtra(AlarmClock.EXTRA_MINUTES, m)
                 putExtra(AlarmClock.EXTRA_MESSAGE, message.ifBlank { "小智闹钟" })
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
-            ContextCompat.startActivity(context, intent, null)
-            "已设置闹钟：${"%02d".format(h)}:${"%02d".format(m)} ${message.ifBlank { "" }}"
+            if (intent2.resolveActivity(context.packageManager) != null) {
+                ContextCompat.startActivity(context, intent2, null)
+                return "已唤起系统闹钟设置界面，请在界面上确认闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
+            } else {
+                return "当前设备不支持设置闹钟"
+            }
         } catch (e: Exception) {
             Log.e(TAG, "setAlarm failed: ${e.message}")
             "设置闹钟失败：${e.message}"
@@ -156,14 +252,19 @@ class CommandExecutor(private val context: Context) {
     fun setTimer(seconds: Int, message: String): String {
         val s = seconds.coerceAtLeast(1)
         return try {
+            // 先检查系统是否支持 ACTION_SET_TIMER
             val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(AlarmClock.EXTRA_LENGTH, s)
                 putExtra(AlarmClock.EXTRA_MESSAGE, message.ifBlank { "小智定时器" })
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
-            ContextCompat.startActivity(context, intent, null)
-            "已设置定时器：${s}秒 ${message.ifBlank { "" }}"
+            if (intent.resolveActivity(context.packageManager) != null) {
+                ContextCompat.startActivity(context, intent, null)
+                return "已设置定时器：${s}秒 ${message.ifBlank { "" }}"
+            } else {
+                return "当前设备不支持设置定时器"
+            }
         } catch (e: Exception) {
             Log.e(TAG, "setTimer failed: ${e.message}")
             "设置定时器失败：${e.message}"

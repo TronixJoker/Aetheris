@@ -1,1 +1,1 @@
-{"versionCode": 59, "versionName": "1.6.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.2.apk", "changelog": "修复更新检测失败：改用GitHub API作为主检查源，绕过jsDelivr CDN缓存"}
+{"versionCode": 60, "versionName": "1.6.3", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.3.apk", "changelog": "新增闹钟/定时器/发短信/拨号相关权限，修复设置闹钟权限不足问题；添加精确闹钟权限检测和引导"}
