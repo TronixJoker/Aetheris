@@ -55,14 +55,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 小智说话时监测麦克风，若用户声音能量显著高于背景基线并持续若干帧，自动打断。
     // 采用"动态基线 + 突变检测"：基线随 TTS 残留/环境噪声自适应更新，
     // 用户说话时能量会显著突增，从而触发打断。比固定阈值更鲁棒。
-    private val vadTriggerFrames = 5            // 连续突增帧数才触发（约 100ms，平衡灵敏度与稳定性）
+    private val vadTriggerFrames = 8            // 连续突增帧数才触发（约 160ms，媒体外放回声较大需更多确认）
     private var vadOverThresholdCount = 0
     // 动态噪声基线（RMS 指数移动平均），初始值较低
     private var vadNoiseBaseline = 300f
     // 触发倍数：当前 RMS 超过 基线 × 该倍数 且高于最低绝对阈值，才算突增
-    private val vadRatioThreshold = 2.5f
+    private val vadRatioThreshold = 3.5f
     // 最低绝对能量阈值：低于此值视为静音，避免极低底噪下误触发
-    private val vadAbsoluteMin = 350f
+    private val vadAbsoluteMin = 500f
     // 打断后的冷却时间，避免连续打断
     private var lastInterruptTimeMs = 0L
     private val vadCooldownMs = 1000L

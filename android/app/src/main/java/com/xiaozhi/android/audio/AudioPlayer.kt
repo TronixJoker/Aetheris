@@ -35,8 +35,8 @@ class AudioPlayer {
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
             )
             .setAudioFormat(

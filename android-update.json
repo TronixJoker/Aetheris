@@ -1,1 +1,1 @@
-{"versionCode": 57, "versionName": "1.6.0", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.0.apk", "changelog": "新增天气查询/搜索/播放音乐工具，优化闹钟等工具描述让AI更容易触发，修复整数参数解析"}
+{"versionCode": 58, "versionName": "1.6.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.1.apk", "changelog": "修复声音无法播放：音频通道从通话改回媒体播放，同时调整VAD参数避免回声误触发"}
