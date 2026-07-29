@@ -1,1 +1,1 @@
-{"versionCode": 58, "versionName": "1.6.1", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.1.apk", "changelog": "修复声音无法播放：音频通道从通话改回媒体播放，同时调整VAD参数避免回声误触发"}
+{"versionCode": 59, "versionName": "1.6.2", "downloadUrl": "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/xiaozhi-v1.6.2.apk", "changelog": "修复更新检测失败：改用GitHub API作为主检查源，绕过jsDelivr CDN缓存"}

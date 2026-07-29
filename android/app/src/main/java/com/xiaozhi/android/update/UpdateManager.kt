@@ -24,10 +24,12 @@ import java.util.concurrent.TimeUnit
 class UpdateManager(private val context: Context) {
     companion object {
         private const val TAG = "UpdateManager"
-        // GitHub raw 优先（无 CDN 缓存，永远返回最新内容）；jsdelivr 镜像作为备用
+        // GitHub API 优先（不经过 CDN，永远返回最新内容，返回 base64 编码的 content 字段）
+        // jsdelivr 镜像作为备用（有 CDN 缓存，可能滞后）
         private const val UPDATE_INFO_URL =
-            "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json"
+            "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main"
         private val UPDATE_INFO_FALLBACK_URLS = listOf(
+            "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
             "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
             "https://fastly.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json",
             "https://gcore.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
