@@ -224,6 +224,21 @@ class WebSocketManager {
         sendText(msg.toString())
     }
 
+    /**
+     * 发送系统文本给 AI 服务器，让它处理并用语音播报。
+     * 用于联网搜索结果、本地命令结果等需要 AI 语音回复的场景。
+     * 模拟 STT 识别结果，让 AI 将其视为用户输入并生成回复。
+     */
+    fun sendSystemText(text: String) {
+        val msg = buildJsonObject {
+            put("session_id", _sessionId.value ?: "")
+            put("type", "stt")
+            put("text", text)
+            put("is_final", true)
+        }
+        sendText(msg.toString())
+    }
+
     fun updateSessionId(id: String) {
         _sessionId.value = id
     }

@@ -804,9 +804,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (isSearchQuery(text)) {
             val query = extractSearchQuery(text)
             addLog("🔍 本地解析搜索: $query")
-            // 打开浏览器搜索（最实用）
-            val result = commandExecutor.search(query)
-            addLog("→ $result")
+            
+            // 判断用户是否明确要求跳转页面
+            val wantBrowser = containsAny(text, "打开网页", "跳转", "浏览器", "链接", "网址", "网站", "页面")
+            
+            if (wantBrowser) {
+                // 用户明确要求跳转 → 打开浏览器
+                val result = commandExecutor.search(query)
+                addLog("→ $result")
+            } else {
+                // 默认：抓取搜索结果摘要，让 AI 语音播报
+                viewModelScope.launch {
+                    addLog("🌐 正在联网搜索...")
+                    val summary = commandExecutor.searchWeb(query)
+                    if (summary.isNotBlank()) {
+                        addLog("📖 搜索结果：$summary")
+                        // 将结果发送给 AI 服务器，让它用语音播报
+                        webSocketManager.sendSystemText("根据搜索结果：$summary")
+                    } else {
+                        addLog("⚠️ 搜索失败，建议您手动搜索")
+                        webSocketManager.sendSystemText("抱歉，联网搜索暂时不可用，请稍后再试")
+                    }
+                }
+            }
             return
         }
 
