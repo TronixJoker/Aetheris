@@ -499,4 +499,61 @@ class ApiService {
             }
         }
     }
+
+    /**
+     * 搜索音乐并返回第一首歌的播放信息（歌名、歌手、播放URL）。
+     * 播放URL使用网易云外链接口：https://music.163.com/song/media/outer/url?id={id}.mp3
+     * 该接口可直接用于 MediaPlayer 播放，无需 API Key。
+     *
+     * @param query 歌曲名或歌手名
+     * @return MusicInfo 包含歌曲ID、名称、歌手和播放URL；失败返回 null
+     */
+    suspend fun searchMusicForPlay(query: String): MusicInfo? {
+        if (query.isBlank()) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://music.163.com/api/search/get?" +
+                    "s=${URLEncoder.encode(query, "UTF-8")}" +
+                    "&type=1&limit=1&offset=0"
+                val body = httpGet(url, mapOf("Referer" to "https://music.163.com"))
+                if (body.isBlank()) return@withContext null
+
+                // 提取歌曲ID和名称
+                val idRegex = Regex(""""id"\s*:\s*(\d+)""")
+                val nameRegex = Regex(""""name"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val artistRegex = Regex(""""artistName"\s*:\s*"([^"]+)"""")
+
+                val idMatch = idRegex.find(body) ?: return@withContext null
+                val nameMatch = nameRegex.find(body)
+                val artistMatch = artistRegex.find(body)
+
+                val songId = idMatch.groupValues[1].toLong()
+                val songName = nameMatch?.groupValues[1]?.replace("\\\"", "\"") ?: "未知歌曲"
+                val artist = artistMatch?.groupValues[1] ?: "未知歌手"
+
+                // 网易云外链播放URL，可直接用于 MediaPlayer
+                val playUrl = "https://music.163.com/song/media/outer/url?id=$songId.mp3"
+
+                MusicInfo(
+                    id = songId,
+                    name = songName,
+                    artist = artist,
+                    playUrl = playUrl
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "searchMusicForPlay failed: ${e.message}")
+                null
+            }
+        }
+    }
 }
+
+/**
+ * 音乐信息数据类
+ */
+data class MusicInfo(
+    val id: Long,
+    val name: String,
+    val artist: String,
+    val playUrl: String
+)

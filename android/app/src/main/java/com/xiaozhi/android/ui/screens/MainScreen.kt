@@ -259,6 +259,9 @@ fun MainScreen(
                 disconnectReason = viewModel.webSocketManager.disconnectReason.collectAsStateWithLifecycle().value
             )
 
+            // Music player bar
+            MusicPlayerBar(viewModel = viewModel)
+
             // Log area
             Card(
                 modifier = Modifier
@@ -1296,4 +1299,101 @@ fun StatusText(
             .padding(horizontal = 16.dp),
         textAlign = androidx.compose.ui.text.style.TextAlign.Center
     )
+}
+
+@Composable
+fun MusicPlayerBar(viewModel: MainViewModel) {
+    val playState by viewModel.musicPlayer.playState.collectAsStateWithLifecycle()
+    val songName by viewModel.musicPlayer.currentSong.collectAsStateWithLifecycle()
+    val artist by viewModel.musicPlayer.currentArtist.collectAsStateWithLifecycle()
+
+    if (playState != com.xiaozhi.android.audio.MusicPlayerManager.PlayState.IDLE) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 歌曲信息
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = songName ?: "未知歌曲",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    if (artist != null) {
+                        Text(
+                            text = artist!!,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // 播放/暂停/加载中按钮
+                when (playState) {
+                    com.xiaozhi.android.audio.MusicPlayerManager.PlayState.LOADING -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    com.xiaozhi.android.audio.MusicPlayerManager.PlayState.PLAYING -> {
+                        IconButton(
+                            onClick = { viewModel.musicPlayer.pause() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Pause,
+                                contentDescription = "暂停",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    com.xiaozhi.android.audio.MusicPlayerManager.PlayState.PAUSED -> {
+                        IconButton(
+                            onClick = { viewModel.musicPlayer.resume() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = "继续",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+
+                // 停止按钮
+                IconButton(
+                    onClick = { viewModel.musicPlayer.stop() },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "停止",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    }
 }

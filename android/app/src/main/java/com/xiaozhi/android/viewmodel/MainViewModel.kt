@@ -10,6 +10,7 @@ import com.xiaozhi.android.XiaozhiApp
 import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.audio.AudioPlayer
 import com.xiaozhi.android.audio.AudioRecorder
+import com.xiaozhi.android.audio.MusicPlayerManager
 import com.xiaozhi.android.audio.OpusCodec
 import com.xiaozhi.android.config.ConfigManager
 import com.xiaozhi.android.control.CommandExecutor
@@ -34,6 +35,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val audioPlayer = AudioPlayer()
     private val opusCodec = OpusCodec()
     private val commandExecutor = CommandExecutor(application)
+    val musicPlayer = MusicPlayerManager()
 
     // UI state
     private val _deviceState = MutableStateFlow(DeviceState.IDLE)
@@ -442,7 +444,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         })
                         add(buildJsonObject {
                             put("name", "play_music")
-                            put("description", "【播放音乐】当用户要求播放歌曲、听音乐、放首歌时调用。例如：播放周杰伦的歌、来一首晴天。Args: `query` - 歌曲名或歌手名")
+                            put("description", "【播放音乐】当用户要求播放歌曲、听音乐、放首歌时调用。在APP内直接播放，不跳转其他应用。例如：播放周杰伦的歌、来一首晴天、放一首夜曲。Args: `query` - 歌曲名或歌手名")
                             put("inputSchema", buildJsonObject {
                                 put("type", "object")
                                 put("properties", buildJsonObject {
@@ -525,20 +527,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     Log.i(TAG, "Tool call: $toolName, args=$arguments")
                     addLog("🔧 执行命令: $toolName")
-                    val execResult = commandExecutor.execute(toolName, arguments) { asyncResult ->
-                        // 异步结果回调：将 API 查询结果通过 sendSystemText 发给 AI 语音播报
-                        Log.d(TAG, "Async result for $toolName: ${asyncResult.take(80)}")
-                        addLog("→ $asyncResult")
-                        webSocketManager.sendSystemText(asyncResult)
-                    }
-                    addLog("→ $execResult")
-                    buildJsonObject {
-                        put("content", buildJsonArray {
-                            add(buildJsonObject {
-                                put("type", "text")
-                                put("text", execResult)
+
+                    // 拦截 play_music：在 APP 内搜索并播放，不跳转其他应用
+                    if (toolName == "play_music") {
+                        val musicQuery = arguments["query"] ?: arguments["song"] ?: arguments["name"] ?: ""
+                        if (musicQuery.isNotBlank()) {
+                            viewModelScope.launch {
+                                addLog("🎵 搜索音乐: $musicQuery")
+                                val musicInfo = commandExecutor.searchMusicForPlay(musicQuery)
+                                if (musicInfo != null) {
+                                    addLog("▶️ 播放: ${musicInfo.name} - ${musicInfo.artist}")
+                                    musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist)
+                                    webSocketManager.sendSystemText("正在播放：${musicInfo.name}，歌手：${musicInfo.artist}")
+                                } else {
+                                    addLog("⚠️ 未找到音乐")
+                                    webSocketManager.sendSystemText("抱歉，未找到相关音乐，请换个关键词试试")
+                                }
+                            }
+                            buildJsonObject {
+                                put("content", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("type", "text")
+                                        put("text", "正在搜索并播放：$musicQuery")
+                                    })
+                                })
+                            }
+                        } else {
+                            buildJsonObject {
+                                put("content", buildJsonArray {
+                                    add(buildJsonObject {
+                                        put("type", "text")
+                                        put("text", "播放内容为空")
+                                    })
+                                })
+                            }
+                        }
+                    } else {
+                        val execResult = commandExecutor.execute(toolName, arguments) { asyncResult ->
+                            // 异步结果回调：将 API 查询结果通过 sendSystemText 发给 AI 语音播报
+                            Log.d(TAG, "Async result for $toolName: ${asyncResult.take(80)}")
+                            addLog("→ $asyncResult")
+                            webSocketManager.sendSystemText(asyncResult)
+                        }
+                        addLog("→ $execResult")
+                        buildJsonObject {
+                            put("content", buildJsonArray {
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", execResult)
+                                })
                             })
-                        })
+                        }
                     }
                 }
                 else -> buildJsonObject {}
@@ -1027,7 +1066,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 10. 搜索音乐（搜歌曲信息）vs 播放音乐（打开音乐App播放）
+        // 10. 搜索音乐（搜歌曲信息）vs 播放音乐（APP内播放）
         val musicQuery = extractMusicQuery(text)
         if (musicQuery.isNotEmpty() && containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
             // 搜索音乐信息：搜歌、查歌、找歌、有什么歌
@@ -1039,10 +1078,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     webSocketManager.sendSystemText(result)
                 }
             } else {
-                // 播放音乐：打开音乐App
+                // 播放音乐：在APP内搜索并播放
                 addLog("🎵 本地解析播放音乐: $musicQuery")
-                val result = commandExecutor.playMusic(musicQuery)
-                addLog("→ $result")
+                viewModelScope.launch {
+                    val musicInfo = commandExecutor.searchMusicForPlay(musicQuery)
+                    if (musicInfo != null) {
+                        addLog("▶️ 播放: ${musicInfo.name} - ${musicInfo.artist}")
+                        musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist)
+                        webSocketManager.sendSystemText("正在播放：${musicInfo.name}，歌手：${musicInfo.artist}")
+                    } else {
+                        addLog("⚠️ 未找到音乐")
+                        webSocketManager.sendSystemText("抱歉，未找到相关音乐，请换个关键词试试")
+                    }
+                }
             }
         }
     }

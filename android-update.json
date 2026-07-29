@@ -1,1 +1,1 @@
-{"versionCode": 66, "versionName": "1.8.2", "downloadUrl": "https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.8.2/xiaozhi-v1.8.2.apk", "changelog": "接入多个免费API数据源：Wikipedia百科、新浪财经股票、B站视频搜索、wttr.in天气、MyMemory翻译、百度新闻聚合；多源并行搜索合并结果；全部语音播报不跳转页面"}
+{"versionCode": 67, "versionName": "1.8.3", "downloadUrl": "https://github.com/TronixJoker/py-xiaozhi/releases/download/v1.8.3/xiaozhi-v1.8.3.apk", "changelog": "音乐在APP内直接播放，不跳转其他应用；新增音乐播放控制条（暂停/继续/停止）；接入网易云音乐外链播放API"}

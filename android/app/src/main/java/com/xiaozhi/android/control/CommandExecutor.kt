@@ -554,4 +554,16 @@ class CommandExecutor(private val context: Context) {
         val result = apiService.searchMusic(query)
         return result.ifBlank { "未找到相关音乐" }
     }
+
+    /**
+     * 搜索音乐并返回第一首歌的播放信息（歌名、歌手、播放URL）。
+     * 用于在 APP 内直接播放，不跳转其他应用。
+     * @param query 歌曲名或歌手名
+     * @return MusicInfo 包含播放URL，失败返回 null
+     */
+    suspend fun searchMusicForPlay(query: String): com.xiaozhi.android.control.MusicInfo? {
+        if (query.isBlank()) return null
+        Log.d(TAG, "Search music for play: $query")
+        return apiService.searchMusicForPlay(query)
+    }
 }
