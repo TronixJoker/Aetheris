@@ -15,40 +15,6 @@ import androidx.core.content.ContextCompat
 class CommandExecutor(private val context: Context) {
     companion object {
         private const val TAG = "CommandExecutor"
-
-        /**
-         * 检查是否拥有设置精确闹钟的权限。
-         * 在 Android 12+ (API 31+) 中，这需要 SCHEDULE_EXACT_ALARM 权限。
-         */
-        fun canScheduleExactAlarms(context: Context): Boolean {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-            return try {
-                alarmManager.canScheduleExactAlarms()
-            } catch (e: Exception) {
-                Log.w(TAG, "canScheduleExactAlarms failed: ${e.message}")
-                false
-            }
-        }
-
-        /**
-         * 打开系统设置页面，引导用户开启精确闹钟权限。
-         */
-        fun openExactAlarmSettings(context: Context) {
-            try {
-                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                // Fallback for older versions or if action not available
-                val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(fallbackIntent)
-            }
-        }
     }
 
     /**
@@ -183,60 +149,46 @@ class CommandExecutor(private val context: Context) {
         val h = hour.coerceIn(0, 23)
         val m = minute.coerceIn(0, 59)
         return try {
-            // 检查是否拥有设置精确闹钟的权限
-            if (!canScheduleExactAlarms(context)) {
-                // 没有权限，引导用户去设置
-                openExactAlarmSettings(context)
-                return "⚠️ 需要开启精确闹钟权限才能自动设置。已为您跳转至设置页面，请开启权限后重试。同时也为您唤起了闹钟设置界面。"
-            }
-
-            // 方案一：尝试使用 AlarmManager 设置精确闹钟
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-            val cal = java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.HOUR_OF_DAY, h)
-                set(java.util.Calendar.MINUTE, m)
-                set(java.util.Calendar.SECOND, 0)
-                // 如果设置的时间已过，则安排在明天
-                if (before(java.util.Calendar.getInstance())) {
-                    add(java.util.Calendar.DAY_OF_YEAR, 1)
-                }
-            }
-            val calendarIntent = android.content.Intent(Intent.ACTION_MAIN).apply {
-                putExtra("android.intent.extra.alarm.HOUR", h)
-                putExtra("android.intent.extra.alarm.MINUTES", m)
-                putExtra("android.intent.extra.alarm.MESSAGE", message.ifBlank { "小智闹钟" })
-            }
-            val pi = android.app.PendingIntent.getActivity(
-                context,
-                0,
-                calendarIntent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            try {
-                alarmManager.setAlarmClock(
-                    android.app.AlarmManager.AlarmClockInfo(cal.timeInMillis, pi),
-                    pi
-                )
-                return "✅ 已成功设置闹钟：${"%02d".format(h)}:${"%02d".format(m)} ${message.ifBlank { "" }}"
-            } catch (e: SecurityException) {
-                Log.w(TAG, "setAlarm via AlarmManager failed (missing permission), fallback to intent: ${e.message}")
-            } catch (e: Exception) {
-                Log.w(TAG, "setAlarm via AlarmManager failed, fallback to intent: ${e.message}")
-            }
-
-            // 方案二：回退方案，使用 Intent 唤起系统闹钟界面让用户手动确认
-            val intent2 = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+            // 直接使用系统闹钟 Intent，这是最可靠的方式
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(AlarmClock.EXTRA_HOUR, h)
                 putExtra(AlarmClock.EXTRA_MINUTES, m)
                 putExtra(AlarmClock.EXTRA_MESSAGE, message.ifBlank { "小智闹钟" })
+                // 不跳过 UI，让用户确认
                 putExtra(AlarmClock.EXTRA_SKIP_UI, false)
             }
-            if (intent2.resolveActivity(context.packageManager) != null) {
-                ContextCompat.startActivity(context, intent2, null)
-                return "已唤起系统闹钟设置界面，请在界面上确认闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
+            
+            // 检查是否有应用能处理这个 Intent
+            if (intent.resolveActivity(context.packageManager) != null) {
+                ContextCompat.startActivity(context, intent, null)
+                return "已打开闹钟设置界面：${"%02d".format(h)}:${"%02d".format(m)}，请在界面上确认闹钟"
             } else {
-                return "当前设备不支持设置闹钟"
+                // 没有系统闹钟应用，尝试打开时钟应用
+                val clockIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                // 查找时钟应用
+                val pm = context.packageManager
+                val clockApps = pm.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                ).filter { it.activityInfo.packageName.contains("clock", ignoreCase = true) || 
+                            it.activityInfo.packageName.contains("alarm", ignoreCase = true) ||
+                            it.activityInfo.packageName.contains("deskclock", ignoreCase = true) }
+                
+                if (clockApps.isNotEmpty()) {
+                    val launchIntent = pm.getLaunchIntentForPackage(clockApps[0].activityInfo.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ContextCompat.startActivity(context, launchIntent, null)
+                        return "已打开时钟应用，请手动设置闹钟：${"%02d".format(h)}:${"%02d".format(m)}"
+                    }
+                }
+                
+                // 最后回退：打开设置
+                return "当前设备没有可用的闹钟应用，请安装时钟应用或手动设置闹钟"
             }
         } catch (e: Exception) {
             Log.e(TAG, "setAlarm failed: ${e.message}")
