@@ -451,10 +451,9 @@ private fun DrawScope.drawFaceExpression(
     val w = size.width
     val h = size.height
 
-    // 面部黑色屏幕区域（像素分析+用户微调）
-    // 右移修正: 0.4775 -> 0.50
-    val faceCenterX = w * 0.50f
-    val faceCenterY = h * 0.2615f
+    // 面部表情位置（用户微调：右移+上移）
+    val faceCenterX = w * 0.515f
+    val faceCenterY = h * 0.235f
     val eyeSpacing = w * 0.04f
     val eyeY = faceCenterY - h * 0.025f
     val mouthY = faceCenterY + h * 0.045f
