@@ -114,32 +114,41 @@ class UpdateManager(private val context: Context) {
         _updateState.value = UpdateState.CHECKING
         scope.launch {
             val currentVersionCode = getCurrentVersionCode()
-            // 主 URL + 备用 URL（raw 优先，jsDelivr 放最后）
-            val urls = mutableListOf(updateUrl)
-            for (fallback in UPDATE_INFO_FALLBACK_URLS) {
-                if (fallback !in urls) urls.add(fallback)
+            Log.d(TAG, "Current versionCode=$currentVersionCode")
+
+            // 构建更新源列表：非CDN源(可靠)优先，CDN源(jsDelivr)降级为仅在无可靠源时使用
+            data class UpdateSource(val url: String, val isReliable: Boolean)
+
+            val sources = mutableListOf<UpdateSource>()
+            // 1. raw.githubusercontent.com - 无CDN缓存，最可靠
+            sources.add(UpdateSource(updateUrl, isReliable = true))
+            // 2. GitHub API - 无CDN缓存，可能限流但可靠
+            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[0], isReliable = true))
+            // 3. jsDelivr 镜像 - 有CDN缓存，不可靠，仅作最后备用
+            for (i in 1 until UPDATE_INFO_FALLBACK_URLS.size) {
+                sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[i], isReliable = false))
             }
 
             // 并行请求所有源
-            val deferreds = urls.map { url ->
+            val deferreds = sources.map { source ->
                 async(Dispatchers.IO) {
                     try {
-                        val cacheBustUrl = if (url.contains("jsdelivr.net")) {
-                            // 对 jsDelivr 用秒级时间戳 + 随机数，更强的缓存破坏
-                            "$url?t=${System.currentTimeMillis()}_${(0..999).random()}"
+                        val requestUrl = if (!source.isReliable) {
+                            // 对 jsDelivr 加缓存破坏参数（虽然可能无效，但聊胜于无）
+                            "${source.url}?t=${System.currentTimeMillis()}_${(0..999).random()}"
                         } else {
-                            url
+                            source.url
                         }
-                        Log.d(TAG, "Checking update from: $cacheBustUrl")
+                        Log.d(TAG, "Checking update from: $requestUrl (reliable=${source.isReliable})")
                         val request = Request.Builder()
-                            .url(cacheBustUrl)
+                            .url(requestUrl)
                             .header("Cache-Control", "no-cache, no-store, must-revalidate")
                             .header("Pragma", "no-cache")
                             .header("Expires", "0")
                             .build()
                         val response = checkClient.newCall(request).execute()
                         if (response.code != 200) {
-                            Log.w(TAG, "Update check HTTP ${response.code} from $url")
+                            Log.w(TAG, "Update check HTTP ${response.code} from ${source.url}")
                             response.close()
                             return@async null
                         }
@@ -157,55 +166,89 @@ class UpdateManager(private val context: Context) {
                                 null
                             }
                         }
-                        Log.d(TAG, "Got versionCode=${info?.versionCode} from $url")
+                        Log.d(TAG, "Got versionCode=${info?.versionCode} from ${source.url}")
                         info
                     } catch (e: Exception) {
-                        Log.w(TAG, "Update check failed from $url: ${e.message}")
+                        Log.w(TAG, "Update check failed from ${source.url}: ${e.message}")
                         null
                     }
                 }
             }
 
-            // 等所有请求完成，取 versionCode 最大的
-            var bestInfo: UpdateInfo? = null
-            var successCount = 0
-            for (deferred in deferreds) {
+            // 收集所有结果，按可靠性分层
+            var bestReliableInfo: UpdateInfo? = null
+            var bestCacheInfo: UpdateInfo? = null
+            var reliableSuccessCount = 0
+            var cacheSuccessCount = 0
+            val outdatedCacheResults = mutableListOf<UpdateInfo>()
+
+            for ((index, deferred) in deferreds.withIndex()) {
+                val source = sources[index]
                 try {
                     val info = deferred.await()
-                    if (info != null) {
-                        successCount++
-                        // 关键：如果是 jsDelivr 源且返回的 versionCode <= 当前版本，
-                        // 说明这是旧缓存，不纳入比较（除非没有更好的结果）
-                        val url = urls[deferreds.indexOf(deferred)]
-                        val isJsDelivrCached = url.contains("jsdelivr.net")
-                        if (bestInfo == null || info.versionCode > bestInfo!!.versionCode) {
-                            // 对于 jsDelivr 缓存的旧版本，只有当没有其他更好结果时才采用
-                            if (isJsDelivrCached && info.versionCode <= currentVersionCode && bestInfo != null) {
-                                Log.d(TAG, "Ignoring jsDelivr cached version ${info.versionCode} (<= current $currentVersionCode, already have ${bestInfo!!.versionCode})")
-                            } else {
-                                bestInfo = info
-                            }
+                    if (info == null) continue
+
+                    if (source.isReliable) {
+                        reliableSuccessCount++
+                        if (bestReliableInfo == null || info.versionCode > bestReliableInfo!!.versionCode) {
+                            bestReliableInfo = info
+                        }
+                    } else {
+                        cacheSuccessCount++
+                        // 对于CDN缓存源：如果返回的versionCode <= 当前版本，说明是旧缓存
+                        // 不纳入比较结果，单独记录
+                        if (info.versionCode <= currentVersionCode) {
+                            outdatedCacheResults.add(info)
+                            Log.d(TAG, "CDN cached outdated version ${info.versionCode} (<= current $currentVersionCode), ignoring")
+                        } else if (bestCacheInfo == null || info.versionCode > bestCacheInfo!!.versionCode) {
+                            bestCacheInfo = info
                         }
                     }
                 } catch (_: Exception) {}
             }
 
-            val info = bestInfo
-            if (info == null) {
-                Log.e(TAG, "Update check failed after trying ${urls.size} URLs")
+            // 决策逻辑：优先使用可靠源，CDN仅在无可靠源时使用
+            val finalInfo: UpdateInfo? = when {
+                bestReliableInfo != null -> {
+                    Log.d(TAG, "Using reliable source result: versionCode=${bestReliableInfo!!.versionCode}")
+                    bestReliableInfo
+                }
+                bestCacheInfo != null -> {
+                    Log.d(TAG, "No reliable source available, using CDN result: versionCode=${bestCacheInfo!!.versionCode}")
+                    bestCacheInfo
+                }
+                outdatedCacheResults.isNotEmpty() -> {
+                    // 所有源都只有旧缓存数据，无法确定最新版本
+                    // 显示错误而非虚假的"已是最新版"
+                    Log.e(TAG, "All sources returned outdated data (best outdated versionCode=${outdatedCacheResults.maxOf { it.versionCode }})")
+                    _updateState.value = UpdateState.ERROR
+                    callback(UpdateResult())
+                    return@launch
+                }
+                else -> {
+                    Log.e(TAG, "Update check failed after trying ${sources.size} URLs")
+                    _updateState.value = UpdateState.ERROR
+                    callback(UpdateResult())
+                    return@launch
+                }
+            }
+
+            if (finalInfo == null) {
                 _updateState.value = UpdateState.ERROR
                 callback(UpdateResult())
                 return@launch
             }
 
-            Log.d(TAG, "Best versionCode=${info.versionCode} from $successCount sources (current=$currentVersionCode)")
-            if (info.versionCode > currentVersionCode) {
+            val successCount = reliableSuccessCount + cacheSuccessCount
+            Log.d(TAG, "Best versionCode=${finalInfo.versionCode} from $successCount sources (current=$currentVersionCode, reliable=$reliableSuccessCount, cache=$cacheSuccessCount)")
+
+            if (finalInfo.versionCode > currentVersionCode) {
                 _updateState.value = UpdateState.UPDATE_AVAILABLE
                 callback(UpdateResult(
                     hasUpdate = true,
-                    versionName = info.versionName,
-                    changelog = info.changelog,
-                    downloadUrl = info.downloadUrl
+                    versionName = finalInfo.versionName,
+                    changelog = finalInfo.changelog,
+                    downloadUrl = finalInfo.downloadUrl
                 ))
             } else {
                 _updateState.value = UpdateState.NO_UPDATE
@@ -317,24 +360,78 @@ class UpdateManager(private val context: Context) {
     }
 
     /**
-     * 构建下载 URL 候选列表：原始 URL + jsDelivr CDN 镜像切换
+     * 构建下载 URL 候选列表：优先无缓存源(raw.githubusercontent.com)，CDN 镜像作备用
+     * 核心原则：raw 源永远排第一（无 CDN 缓存，确保版本正确），CDN 仅在 raw 失败时使用
      */
     private fun buildDownloadUrlCandidates(originalUrl: String): List<String> {
-        val candidates = mutableListOf(originalUrl)
+        val candidates = mutableListOf<String>()
         val lowerUrl = originalUrl.lowercase()
-        // jsDelivr 主域名失败，切换到其他 jsDelivr 镜像
-        if (lowerUrl.contains("cdn.jsdelivr.net")) {
-            for (mirror in listOf("https://fastly.jsdelivr.net/", "https://gcore.jsdelivr.net/")) {
-                val replaced = originalUrl.replaceFirst("https://cdn.jsdelivr.net/", mirror)
-                if (replaced !in candidates) candidates.add(replaced)
+
+        // 先计算对应的 raw.githubusercontent.com URL（永远最优先）
+        var rawUrl: String? = null
+        var jsDelivrBaseUrl: String? = null
+
+        when {
+            lowerUrl.contains("raw.githubusercontent.com") -> {
+                rawUrl = originalUrl
+                // 反推出 jsDelivr URL
+                jsDelivrBaseUrl = originalUrl
+                    .replaceFirst("https://raw.githubusercontent.com/", "https://cdn.jsdelivr.net/gh/")
+                    .replaceFirst("/main/", "@main/")
+                    .replaceFirst("/master/", "@master/")
             }
-            // 添加 raw 作为最后备用（无 CDN 缓存，但国内可能慢）
-            val rawUrl = originalUrl.replaceFirst(
-                "https://cdn.jsdelivr.net/gh/",
-                "https://raw.githubusercontent.com/"
-            ).replaceFirst("@main", "/main").replaceFirst("@latest", "/main")
-            if (rawUrl !in candidates) candidates.add(rawUrl)
+            lowerUrl.contains("cdn.jsdelivr.net") -> {
+                jsDelivrBaseUrl = originalUrl
+                // 转成 raw 格式
+                rawUrl = originalUrl
+                    .replaceFirst("https://cdn.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                    .replaceFirst("@main", "/main")
+                    .replaceFirst("@master", "/master")
+                    .replaceFirst("@latest", "/main")
+            }
+            lowerUrl.contains("fastly.jsdelivr.net") -> {
+                jsDelivrBaseUrl = originalUrl.replaceFirst("https://fastly.jsdelivr.net/", "https://cdn.jsdelivr.net/")
+                rawUrl = originalUrl
+                    .replaceFirst("https://fastly.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                    .replaceFirst("@main", "/main")
+                    .replaceFirst("@master", "/master")
+            }
+            lowerUrl.contains("gcore.jsdelivr.net") -> {
+                jsDelivrBaseUrl = originalUrl.replaceFirst("https://gcore.jsdelivr.net/", "https://cdn.jsdelivr.net/")
+                rawUrl = originalUrl
+                    .replaceFirst("https://gcore.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                    .replaceFirst("@main", "/main")
+                    .replaceFirst("@master", "/master")
+            }
+            else -> {
+                // 未知 URL，原封不动
+                rawUrl = originalUrl
+            }
         }
+
+        // 1. 最优先：raw.githubusercontent.com（无 CDN 缓存，100%是最新版本）
+        if (rawUrl != null && rawUrl !in candidates) candidates.add(rawUrl)
+
+        // 2. 其次：其他无 CDN 缓存的 GitHub 直链镜像
+        // （如果以后有更多镜像可以在这里加）
+
+        // 3. 最后：jsDelivr CDN 镜像（有缓存风险，但国内速度快）
+        if (jsDelivrBaseUrl != null) {
+            // cdn.jsdelivr.net
+            val cdnUrl = jsDelivrBaseUrl
+            if (cdnUrl !in candidates) candidates.add(cdnUrl)
+            // fastly.jsdelivr.net
+            val fastlyUrl = jsDelivrBaseUrl.replaceFirst("https://cdn.jsdelivr.net/", "https://fastly.jsdelivr.net/")
+            if (fastlyUrl !in candidates) candidates.add(fastlyUrl)
+            // gcore.jsdelivr.net
+            val gcoreUrl = jsDelivrBaseUrl.replaceFirst("https://cdn.jsdelivr.net/", "https://gcore.jsdelivr.net/")
+            if (gcoreUrl !in candidates) candidates.add(gcoreUrl)
+        }
+
+        // 如果 candidates 为空，兜底用 originalUrl
+        if (candidates.isEmpty()) candidates.add(originalUrl)
+
+        Log.d(TAG, "Download URL candidates (priority order): $candidates")
         return candidates
     }
 
