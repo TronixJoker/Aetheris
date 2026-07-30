@@ -82,7 +82,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
 
+    // 防止 init() 被重复调用（Compose 重组会多次执行），避免重复 collect 和连接
+    private var isInitialized = false
+
     fun init() {
+        if (isInitialized) return
+        isInitialized = true
         // 注册到 Application，供桌面宠物点击时触发聆听
         (getApplication<Application>() as? XiaozhiApp)?.lastViewModel = this
 

@@ -49,6 +49,8 @@ class WebSocketManager {
     private var reconnectAttempts = 0
     private var autoReconnect = false
     private var wsUrl = ""
+    // 保存重连任务引用，断开时取消，避免后台持续重连干扰下次进入
+    private var reconnectJob: kotlinx.coroutines.Job? = null
     private var accessToken = ""
     private var deviceId = ""
     private var clientId = ""
@@ -134,7 +136,9 @@ class WebSocketManager {
             reconnectAttempts++
             val delay = minOf(reconnectAttempts * 2L, 30L) * 1000
             Log.i(TAG, "Reconnecting in ${delay}ms (attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)")
-            scope.launch {
+            // 取消旧的重连任务，避免多个重连并发竞争导致连接反复断开
+            reconnectJob?.cancel()
+            reconnectJob = scope.launch {
                 delay(delay)
                 doConnect()
             }
@@ -143,7 +147,12 @@ class WebSocketManager {
 
     fun disconnect() {
         autoReconnect = false
-        webSocket?.close(1000, "User disconnect")
+        // 取消挂起中的重连任务，彻底停止后台重连
+        reconnectJob?.cancel()
+        reconnectJob = null
+        try {
+            webSocket?.close(1000, "User disconnect")
+        } catch (_: Exception) {}
         webSocket = null
         _connectionState.value = ConnectionState.DISCONNECTED
     }
@@ -158,6 +167,9 @@ class WebSocketManager {
             webSocket?.close(1000, "Force reconnect")
         } catch (_: Exception) {}
         webSocket = null
+        // 取消旧的重连任务
+        reconnectJob?.cancel()
+        reconnectJob = null
         // 重置状态，启用自动重连
         reconnectAttempts = 0
         autoReconnect = true

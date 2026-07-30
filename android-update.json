@@ -1,1 +1,1 @@
-{"versionCode": 71, "versionName": "1.8.7", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.7.apk", "changelog": "1.去掉麦克风蓝色圆圈按钮，改为长条细线波形；2.不说话时显示水平直线，说话/聆听时显示动态波浪线；3.线条更细更长，直接显示在背景上"}
+{"versionCode": 72, "versionName": "1.8.8", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.8.apk", "changelog": "修复退出APP后后台未清理、再次进入一直连接断开的问题：1.WebSocket断开时取消挂起的重连任务，避免后台持续重连干扰下次进入；2.重连任务串行化，避免多个重连并发竞争导致连接反复断开；3.ViewModel初始化防重复，避免Compose重组时重复订阅和重复连接"}
