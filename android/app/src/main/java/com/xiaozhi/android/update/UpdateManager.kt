@@ -25,11 +25,15 @@ class UpdateManager(private val context: Context) {
     companion object {
         private const val TAG = "UpdateManager"
         // raw.githubusercontent.com 没有 CDN 缓存，是最可靠的源（虽然国内可能慢，但一定是最新的）
-        // jsdelivr 有 CDN 缓存，作为最后备用
         private const val UPDATE_INFO_URL =
             "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json"
+        // 备用源：GitHub API（无缓存，可能限流）+ 国内镜像（快，可能有短暂缓存）+ jsDelivr（CDN缓存，最后备用）
         private val UPDATE_INFO_FALLBACK_URLS = listOf(
             "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main",
+            // 国内 GitHub 代理镜像（直接拼接 raw URL，国内访问快）
+            "https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
+            "https://ghproxy.net/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
+            "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
             "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
@@ -118,14 +122,17 @@ class UpdateManager(private val context: Context) {
             data class UpdateSource(val url: String, val isReliable: Boolean)
 
             val sources = mutableListOf<UpdateSource>()
-            // 1. raw.githubusercontent.com - 无CDN缓存，最可靠
+            // 1. raw.githubusercontent.com - 无CDN缓存，最可靠（国内可能慢）
             sources.add(UpdateSource(updateUrl, isReliable = true))
             // 2. GitHub API - 无CDN缓存，可能限流但可靠
             sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[0], isReliable = true))
-            // 3. jsDelivr 镜像 - 有CDN缓存，不可靠，仅作最后备用
-            for (i in 1 until UPDATE_INFO_FALLBACK_URLS.size) {
-                sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[i], isReliable = false))
-            }
+            // 3. 国内 GitHub 代理镜像 - 直接转发 raw 内容，国内访问快，视为可靠
+            //    （gh-proxy / ghproxy.net / ghfast.top）
+            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[1], isReliable = true))
+            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[2], isReliable = true))
+            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[3], isReliable = true))
+            // 4. jsDelivr CDN 镜像 - 有CDN缓存，不可靠，仅作最后备用
+            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[4], isReliable = false))
 
             // 并行请求所有源
             val deferreds = sources.map { source ->
@@ -407,13 +414,17 @@ class UpdateManager(private val context: Context) {
             }
         }
 
-        // 1. 最优先：raw.githubusercontent.com（无 CDN 缓存，100%是最新版本）
+        // 1. 最优先：国内 GitHub 代理镜像（国内访问快，无 CDN 缓存，确保最新版本）
+        if (rawUrl != null) {
+            candidates.add("https://gh-proxy.com/$rawUrl")
+            candidates.add("https://ghproxy.net/$rawUrl")
+            candidates.add("https://ghfast.top/$rawUrl")
+        }
+
+        // 2. 其次：raw.githubusercontent.com（无 CDN 缓存，100%是最新版本，国内可能慢）
         if (rawUrl != null && rawUrl !in candidates) candidates.add(rawUrl)
 
-        // 2. 其次：其他无 CDN 缓存的 GitHub 直链镜像
-        // （如果以后有更多镜像可以在这里加）
-
-        // 3. 最后：jsDelivr CDN 镜像（有缓存风险，但国内速度快）
+        // 3. 然后：jsDelivr CDN 镜像（有缓存风险，但国内速度快）
         if (jsDelivrBaseUrl != null) {
             // cdn.jsdelivr.net
             val cdnUrl = jsDelivrBaseUrl

@@ -17,6 +17,7 @@ import com.xiaozhi.android.control.CommandExecutor
 import com.xiaozhi.android.model.DeviceState
 import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.pet.FloatingPetService
+import com.xiaozhi.android.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,6 +37,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val opusCodec = OpusCodec()
     private val commandExecutor = CommandExecutor(application)
     val musicPlayer = MusicPlayerManager()
+    val updateManager = UpdateManager(application)
+
+    // 更新提醒状态：非 null 表示有可用更新，UI 弹窗提醒
+    private val _updateInfo = MutableStateFlow<UpdateManager.UpdateResult?>(null)
+    val updateInfo: StateFlow<UpdateManager.UpdateResult?> = _updateInfo
 
     // UI state
     private val _deviceState = MutableStateFlow(DeviceState.IDLE)
@@ -188,6 +194,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // 启动后自动检查更新（延迟 3 秒，避免与启动连接争抢网络）
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(3000)
+            checkForUpdates()
+        }
+    }
+
+    /**
+     * 检查更新（手动或自动触发）。
+     * 检测到新版本时填充 [updateInfo]，UI 据此弹出更新提醒对话框。
+     */
+    fun checkForUpdates() {
+        if (updateManager.updateState.value == UpdateManager.UpdateState.CHECKING ||
+            updateManager.updateState.value == UpdateManager.UpdateState.DOWNLOADING) {
+            return
+        }
+        addLog("🔄 检查更新...")
+        updateManager.checkForUpdates { result ->
+            if (result.hasUpdate) {
+                addLog("✨ 发现新版本: ${result.versionName}")
+                _updateInfo.value = result
+            } else {
+                addLog("✅ 当前已是最新版本")
+                _updateInfo.value = null
+            }
+        }
+    }
+
+    /**
+     * 用户在更新提醒对话框点击"立即更新"。
+     */
+    fun startUpdateDownload() {
+        val info = _updateInfo.value ?: return
+        addLog("⬇️ 开始下载更新: ${info.versionName}")
+        updateManager.downloadUpdate(info.downloadUrl)
+    }
+
+    /**
+     * 用户在更新提醒对话框点击"稍后再说"，清除提醒状态。
+     */
+    fun dismissUpdateReminder() {
+        _updateInfo.value = null
     }
 
     private suspend fun startConnection() {
@@ -1066,31 +1115,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 10. 搜索音乐（搜歌曲信息）vs 播放音乐（APP内播放）
+        // 10. 搜索音乐信息（搜歌、查歌、找歌）
+        // 注意：播放音乐统一由服务器 MCP play_music 工具调用处理，本地不再执行播放，
+        // 避免本地与 MCP 同时触发导致"显示未找到但实际在播放"的矛盾，以及重复播放。
         val musicQuery = extractMusicQuery(text)
-        if (musicQuery.isNotEmpty() && containsAny(text, "播放", "放", "听", "音乐", "歌", "首")) {
-            // 搜索音乐信息：搜歌、查歌、找歌、有什么歌
-            if (containsAny(text, "搜", "搜索", "查一下", "查查", "找一下", "有什么")) {
-                addLog("🎵 本地解析搜索音乐: $musicQuery")
-                viewModelScope.launch {
-                    val result = commandExecutor.searchMusic(musicQuery)
-                    addLog("→ $result")
-                    webSocketManager.sendSystemText(result)
-                }
-            } else {
-                // 播放音乐：在APP内搜索并播放
-                addLog("🎵 本地解析播放音乐: $musicQuery")
-                viewModelScope.launch {
-                    val musicInfo = commandExecutor.searchMusicForPlay(musicQuery)
-                    if (musicInfo != null) {
-                        addLog("▶️ 播放: ${musicInfo.name} - ${musicInfo.artist}")
-                        musicPlayer.play(musicInfo.playUrl, musicInfo.name, musicInfo.artist, musicInfo.headers)
-                        webSocketManager.sendSystemText("正在播放：${musicInfo.name}，歌手：${musicInfo.artist}")
-                    } else {
-                        addLog("⚠️ 未找到音乐")
-                        webSocketManager.sendSystemText("抱歉，未找到相关音乐，请换个关键词试试")
-                    }
-                }
+        if (musicQuery.isNotEmpty() && containsAny(text, "歌", "音乐") &&
+            containsAny(text, "搜", "搜索", "查一下", "查查", "找一下", "有什么")) {
+            addLog("🎵 本地解析搜索音乐: $musicQuery")
+            viewModelScope.launch {
+                val result = commandExecutor.searchMusic(musicQuery)
+                addLog("→ $result")
+                webSocketManager.sendSystemText(result)
             }
         }
     }
@@ -1239,5 +1274,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         opusCodec.release()
         webSocketManager.destroy()
         activationService.destroy()
+        musicPlayer.release()
+        updateManager.destroy()
     }
 }

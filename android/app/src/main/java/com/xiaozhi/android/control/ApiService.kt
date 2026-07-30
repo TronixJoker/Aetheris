@@ -529,65 +529,42 @@ class ApiService {
      * 适用于 MediaPlayer 直接播放（需配合 Referer 请求头）。
      *
      * 流程：搜索视频 → 取 bvid → 查 cid → 查 playurl(DASH) → 取音频流URL
+     * 优化：使用普通搜索接口（非 wbi，避免风控）；关键词追加"音乐"提高命中率；
+     * 标题解析兼容 《》、- 、多种格式。
      */
     private suspend fun searchMusicBilibili(query: String): MusicInfo? {
         return withContext(Dispatchers.IO) {
             try {
-                // Step 1: 搜索B站视频
-                val searchUrl = "https://api.bilibili.com/x/web-interface/wbi/search/type?" +
-                    "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
-                    "&page=1&page_size=5"
-                val searchBody = httpGet(searchUrl, mapOf("Referer" to "https://search.bilibili.com"))
-                if (searchBody.isBlank()) return@withContext null
-
-                // 解析前几个视频的 bvid 和 title
                 data class BiliVideo(val bvid: String, val title: String)
-                val videos = mutableListOf<BiliVideo>()
-                // bvid 和 title 在 JSON 中按出现顺序匹配
-                val bvidRegex = Regex(""""bvid"\s*:\s*"(BV[A-Za-z0-9]+)"""")
-                val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
-                val bvids = bvidRegex.findAll(searchBody).map { it.groupValues[1] }.toList()
-                val titles = titleRegex.findAll(searchBody).map {
-                    it.groupValues[1]
-                        .replace("<em class=\"keyword\">", "")
-                        .replace("</em>", "")
-                        .replace("\\\"", "\"")
-                        .replace("\\/", "/")
-                }.toList()
-                val n = minOf(bvids.size, titles.size, 5)
-                for (i in 0 until n) {
-                    videos.add(BiliVideo(bvids[i], titles[i]))
-                }
-                if (videos.isEmpty()) return@withContext null
 
-                Log.d(TAG, "Bilibili search found ${videos.size} videos, trying to get audio stream")
+                // 关键词策略：原始query 和 query+" 音乐" 都搜，扩大命中
+                val keywords = linkedSetOf(query, "$query 音乐", "$query 歌曲")
 
-                // Step 2: 逐个尝试获取音频流
-                for (video in videos) {
-                    val audioUrl = getBilibiliAudioStream(video.bvid)
-                    if (audioUrl != null) {
-                        // 清理标题作为歌曲名：取 " - " 前的部分或整体
-                        val cleanTitle = video.title
-                            .replace(Regex("【[^】]*】"), "")
-                            .replace(Regex("\\[[^\\]]*\\]"), "")
-                            .trim()
-                        // 尝试解析 "歌手 - 歌名" 格式
-                        val parts = cleanTitle.split(" - ", limit = 2)
-                        val (songName, artist) = if (parts.size == 2) {
-                            parts[1].trim() to parts[0].trim()
-                        } else {
-                            cleanTitle to "B站音乐"
+                for (kw in keywords) {
+                    val videos = searchBilibiliVideos(kw)
+                    if (videos.isEmpty()) continue
+                    Log.d(TAG, "Bilibili search [$kw] found ${videos.size} videos")
+
+                    // 逐个尝试获取音频流
+                    for ((bvid, title) in videos) {
+                        val audioUrl = try {
+                            getBilibiliAudioStream(bvid)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "getBilibiliAudioStream error for $bvid: ${e.message}")
+                            null
                         }
-
-                        Log.d(TAG, "Bilibili audio stream OK: $songName - $artist")
-                        return@withContext MusicInfo(
-                            id = 0L,
-                            name = songName,
-                            artist = artist,
-                            playUrl = audioUrl,
-                            // B站音频流必须带 Referer 否则 403
-                            headers = mapOf("Referer" to "https://www.bilibili.com")
-                        )
+                        if (audioUrl != null) {
+                            val (songName, artist) = parseBiliTitle(title, query)
+                            Log.d(TAG, "Bilibili audio stream OK: $songName - $artist")
+                            return@withContext MusicInfo(
+                                id = 0L,
+                                name = songName,
+                                artist = artist,
+                                playUrl = audioUrl,
+                                // B站音频流必须带 Referer 否则 403
+                                headers = mapOf("Referer" to "https://www.bilibili.com")
+                            )
+                        }
                     }
                 }
                 null
@@ -596,6 +573,78 @@ class ApiService {
                 null
             }
         }
+    }
+
+    /**
+     * 搜索B站视频，返回 (bvid, title) 列表。
+     * 使用普通搜索接口（非 wbi），带 Cookie 头降低风控概率。
+     */
+    private suspend fun searchBilibiliVideos(keyword: String): List<Pair<String, String>> {
+        return try {
+            val searchUrl = "https://api.bilibili.com/x/web-interface/search/type?" +
+                "search_type=video&keyword=${URLEncoder.encode(keyword, "UTF-8")}" +
+                "&page=1&page_size=8"
+            val searchBody = httpGet(
+                searchUrl,
+                mapOf(
+                    "Referer" to "https://search.bilibili.com",
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
+                )
+            )
+            if (searchBody.isBlank()) return emptyList()
+
+            val bvidRegex = Regex(""""bvid"\s*:\s*"(BV[A-Za-z0-9]+)"""")
+            val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+            val bvids = bvidRegex.findAll(searchBody).map { it.groupValues[1] }.toList()
+            val titles = titleRegex.findAll(searchBody).map {
+                it.groupValues[1]
+                    .replace("<em class=\"keyword\">", "")
+                    .replace("</em>", "")
+                    .replace("\\\"", "\"")
+                    .replace("\\/", "/")
+            }.toList()
+            val n = minOf(bvids.size, titles.size, 8)
+            (0 until n).map { bvids[it] to titles[it] }
+        } catch (e: Exception) {
+            Log.w(TAG, "searchBilibiliVideos failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * 解析B站视频标题为 (歌名, 歌手)。
+     * 兼容多种格式：
+     *   "周杰伦 - 晴天" → (晴天, 周杰伦)
+     *   "《晴天》周杰伦" → (晴天, 周杰伦)
+     *   "周杰伦《晴天》" → (晴天, 周杰伦)
+     *   "【周杰伦】晴天" → (晴天, 周杰伦)
+     */
+    private fun parseBiliTitle(rawTitle: String, query: String): Pair<String, String> {
+        var t = rawTitle
+            .replace(Regex("【[^】]*】"), "")
+            .replace(Regex("\\[[^\\]]*\\]"), "")
+            .replace(Regex("[(（][^)）]*[)）]"), "")
+            .trim()
+
+        // 优先提取《》中的内容作为歌名
+        val bookMatch = Regex("《([^《》]+)》").find(t)
+        if (bookMatch != null) {
+            val songName = bookMatch.groupValues[1].trim()
+            val artist = t.replace(bookMatch.value, "").trim()
+                .replace(Regex("[-－—\\s]+"), "")
+                .ifBlank { query }
+            return songName to artist.ifBlank { "B站音乐" }
+        }
+
+        // 尝试 "歌手 - 歌名" / "歌名 - 歌手"
+        val parts = t.split(Regex("\\s*[-－—]\\s*"), limit = 2)
+        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+            // 约定：B站音乐视频标题多为 "歌手 - 歌名"
+            return parts[1].trim() to parts[0].trim()
+        }
+
+        // 兜底：整体作为歌名
+        return t.ifBlank { query } to "B站音乐"
     }
 
     /**

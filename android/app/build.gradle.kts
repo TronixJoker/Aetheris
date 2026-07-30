@@ -32,8 +32,8 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 68
-        versionName = "1.8.4"
+        versionCode = 69
+        versionName = "1.8.5"
     }
 
     buildTypes {

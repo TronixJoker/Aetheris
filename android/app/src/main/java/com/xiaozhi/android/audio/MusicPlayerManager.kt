@@ -3,9 +3,15 @@ package com.xiaozhi.android.audio
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 音乐播放管理器：在 APP 内部播放音乐，不跳转到其他应用。
@@ -13,6 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * 支持两种播放源：
  * 1. 直接URL（如网易云外链）- MediaPlayer 直接访问
  * 2. 需自定义请求头的URL（如 B站音频流需 Referer）- 通过 [LocalAudioProxyServer] 本地代理转发
+ *
+ * 注意：本地代理的 ServerSocket 绑定属于网络操作，必须在 IO 线程执行，
+ * 否则在主线程会触发 NetworkOnMainThreadException 导致闪退。
  */
 class MusicPlayerManager {
     companion object {
@@ -25,6 +34,7 @@ class MusicPlayerManager {
 
     private var mediaPlayer: MediaPlayer? = null
     private val proxyServer = LocalAudioProxyServer()
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val _playState = MutableStateFlow(PlayState.IDLE)
     val playState: StateFlow<PlayState> = _playState.asStateFlow()
@@ -49,59 +59,76 @@ class MusicPlayerManager {
         _currentArtist.value = artist
 
         // 先释放旧的播放器
-        mediaPlayer?.release()
-
-        // 决定最终播放 URL：有自定义头时通过本地代理转发
-        val playUrl = if (headers.isNotEmpty()) {
-            val root = proxyServer.start()
-            if (root == null) {
-                Log.e(TAG, "Failed to start local proxy, cannot play with headers")
-                _playState.value = PlayState.ERROR
-                _currentSong.value = null
-                _currentArtist.value = null
-                return
-            }
-            val proxyUrl = proxyServer.buildProxyUrl(url, headers)
-            Log.d(TAG, "Playing via local proxy: $proxyUrl")
-            proxyUrl
-        } else {
-            url
+        try { mediaPlayer?.release() } catch (e: Exception) {
+            Log.w(TAG, "release old player: ${e.message}")
         }
+        mediaPlayer = null
 
-        try {
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                setDataSource(playUrl)
-                setOnPreparedListener { mp ->
-                    Log.d(TAG, "MediaPlayer prepared, starting playback")
-                    _playState.value = PlayState.PLAYING
-                    mp.start()
+        scope.launch {
+            // 有自定义头时通过本地代理转发；代理启动（ServerSocket 绑定）必须在 IO 线程
+            val playUrl = if (headers.isNotEmpty()) {
+                val proxyUrl = withContext(Dispatchers.IO) {
+                    try {
+                        val root = proxyServer.start()
+                        if (root == null) {
+                            Log.e(TAG, "Failed to start local proxy")
+                            return@withContext null
+                        }
+                        proxyServer.buildProxyUrl(url, headers).also {
+                            Log.d(TAG, "Playing via local proxy: $it")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Proxy start failed: ${e.message}")
+                        null
+                    }
                 }
-                setOnCompletionListener {
-                    Log.d(TAG, "Playback completed")
-                    _playState.value = PlayState.IDLE
-                    _currentSong.value = null
-                    _currentArtist.value = null
-                }
-                setOnErrorListener { _, what, extra ->
-                    Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                if (proxyUrl == null) {
                     _playState.value = PlayState.ERROR
                     _currentSong.value = null
                     _currentArtist.value = null
-                    true
+                    return@launch
                 }
-                prepareAsync()
+                proxyUrl
+            } else {
+                url
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start playback: ${e.message}")
-            _playState.value = PlayState.ERROR
-            _currentSong.value = null
-            _currentArtist.value = null
+
+            // 主线程创建 MediaPlayer（MediaPlayer 非线程安全，统一在 Main 线程操作）
+            try {
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+                    )
+                    setDataSource(playUrl)
+                    setOnPreparedListener { mp ->
+                        Log.d(TAG, "MediaPlayer prepared, starting playback")
+                        _playState.value = PlayState.PLAYING
+                        mp.start()
+                    }
+                    setOnCompletionListener {
+                        Log.d(TAG, "Playback completed")
+                        _playState.value = PlayState.IDLE
+                        _currentSong.value = null
+                        _currentArtist.value = null
+                    }
+                    setOnErrorListener { _, what, extra ->
+                        Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                        _playState.value = PlayState.ERROR
+                        _currentSong.value = null
+                        _currentArtist.value = null
+                        true
+                    }
+                    prepareAsync()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start playback: ${e.message}")
+                _playState.value = PlayState.ERROR
+                _currentSong.value = null
+                _currentArtist.value = null
+            }
         }
     }
 
@@ -159,16 +186,15 @@ class MusicPlayerManager {
     }
 
     /**
-     * 释放资源（含本地代理服务器）
+     * 释放资源（含本地代理服务器和协程作用域）
      */
     fun release() {
-        try {
-            mediaPlayer?.release()
-        } catch (e: Exception) {
-            Log.e(TAG, "Release failed: ${e.message}")
+        try { mediaPlayer?.release() } catch (e: Exception) {
+            Log.w(TAG, "Release failed: ${e.message}")
         }
         mediaPlayer = null
         proxyServer.stop()
+        scope.cancel()
         _playState.value = PlayState.IDLE
         _currentSong.value = null
         _currentArtist.value = null
