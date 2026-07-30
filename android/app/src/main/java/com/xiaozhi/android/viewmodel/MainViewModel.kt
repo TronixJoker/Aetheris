@@ -58,6 +58,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var isRunning = false
     private var audioChannelOpened = false
+    // 是否已自动开启过聆听（每次进入APP只自动开启一次，避免反复打断）
+    private var hasAutoStartedListening = false
 
     // VAD（语音活动检测）自动打断相关参数
     // 小智说话时监测麦克风，若用户声音能量显著高于背景基线并持续若干帧，自动打断。
@@ -273,6 +275,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     audioChannelOpened = true
                     addLog("✅ 音频通道已就绪")
+                    // 进入APP后自动开始聆听（仅首次），说话即识别内容
+                    if (!hasAutoStartedListening) {
+                        hasAutoStartedListening = true
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(300)
+                            if (_deviceState.value == DeviceState.IDLE) {
+                                tryStartListeningInternal()
+                            }
+                        }
+                    }
                 }
 
                 "mcp" -> {

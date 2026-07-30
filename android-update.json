@@ -1,1 +1,1 @@
-{"versionCode": 69, "versionName": "1.8.5", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.5.apk", "changelog": "1.APP名字改为珩杬；2.修复音乐播放显示未找到但实际在播放的问题（移除本地重复触发，统一由MCP处理）；3.优化B站音乐搜索，搜歌更准；4.修复更新检测不到最新版本（添加国内镜像源）；5.新增启动自动检查更新和更新提醒弹窗；6.修复播放音乐时无故闪退（代理服务器主线程网络操作）"}
+{"versionCode": 70, "versionName": "1.8.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.6.apk", "changelog": "1.修复APP内标题名字未更新的问题（顶部栏显示珩杬）；2.麦克风按钮改为波形指示器：说话时显示动态波浪线，空闲时显示直线；3.进入APP后自动开始聆听，说话即识别内容，无需手动点击按钮"}
