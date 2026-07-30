@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1331,53 +1332,38 @@ fun MainControlButton(
     val isDisabled = activationState != ActivationService.ActivationState.ACTIVATED &&
             activationState != ActivationService.ActivationState.ACTIVATION_SUCCESS
 
-    val colors = when {
+    // 活跃状态（聆听或说话）显示波浪线，否则显示直线
+    val isActive = !isDisabled &&
+        (deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING)
+
+    // 线条颜色随状态变化
+    val lineColor = when {
         isDisabled -> Color.Gray
         deviceState == DeviceState.LISTENING -> XiaozhiGreen
         deviceState == DeviceState.SPEAKING -> XiaozhiOrange
         deviceState == DeviceState.CONNECTING -> XiaozhiOrange
-        else -> XiaozhiBlue
+        else -> Color.White
     }
 
-    // 活跃状态（聆听或说话）显示波浪线，否则显示直线
-    val isActive = deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING
-
-    val isPulsing = deviceState == DeviceState.LISTENING
-    val pulseScale by animateFloatAsState(
-        targetValue = if (isPulsing) 1.08f else 1f,
-        animationSpec = if (isPulsing) {
-            infiniteRepeatable(
-                animation = tween(800, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            )
-        } else {
-            tween(300)
-        },
-        label = "pulse"
-    )
-
-    FloatingActionButton(
-        onClick = { if (!isDisabled) onClick() },
+    WaveformIndicator(
+        isActive = isActive,
+        color = lineColor,
         modifier = Modifier
-            .size(80.dp)
-            .scale(pulseScale),
-        containerColor = colors,
-        contentColor = Color.White,
-        shape = CircleShape
-    ) {
-        WaveformIndicator(
-            isActive = isActive,
-            modifier = Modifier.size(48.dp)
-        )
-    }
+            .fillMaxWidth(0.9f)
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { if (!isDisabled) onClick() }
+    )
 }
 
 /**
  * 波形指示器：活跃时显示动态波浪线，空闲时显示水平直线。
+ * 无背景圆圈，直接在背景上绘制长细线条。
  */
 @Composable
 fun WaveformIndicator(
     isActive: Boolean,
+    color: Color = Color.White,
     modifier: Modifier = Modifier
 ) {
     // 波浪相位动画（仅活跃时推进）
@@ -1400,36 +1386,37 @@ fun WaveformIndicator(
     )
 
     Canvas(modifier = modifier) {
-        drawWaveform(amplitude = amplitude, phase = phase)
+        drawWaveform(amplitude = amplitude, phase = phase, color = color)
     }
 }
 
 /**
  * 绘制波形：正弦波，振幅为0时即水平直线。
+ * 线条细长：宽度为画布高度的 6%。
  */
-private fun DrawScope.drawWaveform(amplitude: Float, phase: Float) {
+private fun DrawScope.drawWaveform(amplitude: Float, phase: Float, color: Color) {
     val w = size.width
     val h = size.height
     val centerY = h / 2f
-    // 最大振幅为高度的 30%
-    val maxAmp = h * 0.3f
+    // 最大振幅为高度的 35%
+    val maxAmp = h * 0.35f
     val amp = maxAmp * amplitude
 
     val path = Path()
-    val steps = 60
+    val steps = 80
     path.moveTo(0f, centerY)
     for (i in 0..steps) {
         val x = w * i / steps
-        // 2.5 个完整波形周期
-        val y = centerY + amp * sin((2.5 * Math.PI * x / w + phase).toDouble()).toFloat()
+        // 3 个完整波形周期，更密集
+        val y = centerY + amp * sin((3.0 * Math.PI * x / w + phase).toDouble()).toFloat()
         path.lineTo(x, y)
     }
 
     drawPath(
         path = path,
-        color = Color.White,
+        color = color,
         style = Stroke(
-            width = h * 0.08f,
+            width = h * 0.06f,
             cap = StrokeCap.Round,
             join = StrokeJoin.Round
         )

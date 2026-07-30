@@ -1,1 +1,1 @@
-{"versionCode": 70, "versionName": "1.8.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.6.apk", "changelog": "1.修复APP内标题名字未更新的问题（顶部栏显示珩杬）；2.麦克风按钮改为波形指示器：说话时显示动态波浪线，空闲时显示直线；3.进入APP后自动开始聆听，说话即识别内容，无需手动点击按钮"}
+{"versionCode": 71, "versionName": "1.8.7", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.7.apk", "changelog": "1.去掉麦克风蓝色圆圈按钮，改为长条细线波形；2.不说话时显示水平直线，说话/聆听时显示动态波浪线；3.线条更细更长，直接显示在背景上"}
