@@ -276,13 +276,23 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        Button(onClick = {
-                            showUpdateDialog = true
-                            updateManager.checkForUpdates { result ->
-                                updateResult = result
+                        // 检查更新按钮：有新版本时右上角显示红点提醒
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Button(onClick = {
+                                showUpdateDialog = true
+                                updateManager.checkForUpdates { result ->
+                                    updateResult = result
+                                }
+                            }) {
+                                Text("检查更新")
                             }
-                        }) {
-                            Text("检查更新")
+                            if (updateResult != null && updateResult!!.hasUpdate) {
+                                Badge(
+                                    modifier = Modifier
+                                        .offset(x = 6.dp, y = (-6).dp)
+                                        .size(10.dp)
+                                )
+                            }
                         }
                     }
                 }

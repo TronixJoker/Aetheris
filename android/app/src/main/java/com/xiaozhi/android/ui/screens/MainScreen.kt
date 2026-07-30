@@ -39,7 +39,6 @@ import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.model.DeviceState
 import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.ui.theme.*
-import com.xiaozhi.android.update.UpdateManager
 import com.xiaozhi.android.viewmodel.MainViewModel
 import kotlin.math.sin
 
@@ -57,9 +56,6 @@ fun MainScreen(
     val activationCode by viewModel.activationService.activationCode.collectAsStateWithLifecycle()
     val otaStatus by viewModel.otaStatus.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
-    val updateState by viewModel.updateManager.updateState.collectAsStateWithLifecycle()
-    val downloadProgress by viewModel.updateManager.downloadProgress.collectAsStateWithLifecycle()
-    val downloadSize by viewModel.updateManager.downloadSize.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     // Auto-scroll logs
@@ -91,8 +87,18 @@ fun MainScreen(
                     }) {
                         Icon(Icons.Filled.Pets, contentDescription = "桌面宠物")
                     }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置")
+                    // 设置图标：有新版本时右上角显示红点提醒
+                    Box(modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Filled.Settings, contentDescription = "设置")
+                        }
+                        if (updateInfo != null && updateInfo!!.hasUpdate) {
+                            Badge(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(10.dp)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -296,123 +302,6 @@ fun MainScreen(
         }
     }
 
-    // 更新提醒对话框
-    if (updateInfo != null) {
-        UpdateReminderDialog(
-            versionName = updateInfo!!.versionName,
-            changelog = updateInfo!!.changelog,
-            updateState = updateState,
-            downloadProgress = downloadProgress,
-            downloadSize = downloadSize,
-            onUpdate = { viewModel.startUpdateDownload() },
-            onDismiss = { viewModel.dismissUpdateReminder() },
-            onRetryInstall = { viewModel.updateManager.retryInstall() }
-        )
-    }
-}
-
-/**
- * 更新提醒对话框
- * 根据 [updateState] 显示不同内容：发现新版本、下载中、安装中、需要权限、错误。
- */
-@Composable
-fun UpdateReminderDialog(
-    versionName: String,
-    changelog: String,
-    updateState: UpdateManager.UpdateState,
-    downloadProgress: Int,
-    downloadSize: String,
-    onUpdate: () -> Unit,
-    onDismiss: () -> Unit,
-    onRetryInstall: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = {
-            // 下载中不允许直接关闭，避免误操作
-            if (updateState != UpdateManager.UpdateState.DOWNLOADING) {
-                onDismiss()
-            }
-        },
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
-                Text("发现新版本 v$versionName", fontWeight = FontWeight.Bold)
-            }
-        },
-        text = {
-            Column {
-                when (updateState) {
-                    UpdateManager.UpdateState.DOWNLOADING -> {
-                        Text("正在下载更新...", fontSize = 14.sp)
-                        Spacer(Modifier.height(8.dp))
-                        if (downloadProgress >= 0) {
-                            LinearProgressIndicator(
-                                progress = { downloadProgress / 100f },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text("$downloadProgress%  ($downloadSize)", fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(4.dp))
-                            Text("已下载 $downloadSize", fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    UpdateManager.UpdateState.NEED_PERMISSION -> {
-                        Text("下载完成！需要授予「安装未知应用」权限才能安装。", fontSize = 14.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Text("请点击下方「去授权」，在系统设置中开启权限后返回重试。",
-                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    UpdateManager.UpdateState.INSTALLING -> {
-                        Text("正在启动安装，请在系统弹窗中确认安装。", fontSize = 14.sp)
-                    }
-                    UpdateManager.UpdateState.ERROR -> {
-                        Text("下载或安装失败，请检查网络后重试。", fontSize = 14.sp,
-                            color = XiaozhiOrange)
-                    }
-                    else -> {
-                        // UPDATE_AVAILABLE / IDLE / CHECKING / NO_UPDATE / DOWNLOAD_COMPLETE
-                        Text("更新内容：", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = changelog.ifBlank { "优化体验，修复问题" },
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            when (updateState) {
-                UpdateManager.UpdateState.DOWNLOADING -> {
-                    // 下载中不显示按钮
-                }
-                UpdateManager.UpdateState.NEED_PERMISSION -> {
-                    TextButton(onClick = onRetryInstall) { Text("去授权并安装") }
-                }
-                UpdateManager.UpdateState.INSTALLING -> {
-                    TextButton(onClick = onDismiss) { Text("关闭") }
-                }
-                UpdateManager.UpdateState.ERROR -> {
-                    TextButton(onClick = onUpdate) { Text("重试") }
-                }
-                else -> {
-                    TextButton(onClick = onUpdate) { Text("立即更新") }
-                }
-            }
-        },
-        dismissButton = {
-            if (updateState != UpdateManager.UpdateState.DOWNLOADING &&
-                updateState != UpdateManager.UpdateState.INSTALLING) {
-                TextButton(onClick = onDismiss) { Text("稍后再说") }
-            }
-        }
-    )
 }
 
 @Composable

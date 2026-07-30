@@ -39,7 +39,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val musicPlayer = MusicPlayerManager()
     val updateManager = UpdateManager(application)
 
-    // 更新提醒状态：非 null 表示有可用更新，UI 弹窗提醒
+    // 更新提醒状态：非 null 表示有可用更新，UI 在设置入口显示红点提醒
     private val _updateInfo = MutableStateFlow<UpdateManager.UpdateResult?>(null)
     val updateInfo: StateFlow<UpdateManager.UpdateResult?> = _updateInfo
 
@@ -211,7 +211,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * 检查更新（手动或自动触发）。
-     * 检测到新版本时填充 [updateInfo]，UI 据此弹出更新提醒对话框。
+     * 检测到新版本时填充 [updateInfo]，UI 据此在设置入口显示红点提醒。
      */
     fun checkForUpdates() {
         if (updateManager.updateState.value == UpdateManager.UpdateState.CHECKING ||
@@ -228,22 +228,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _updateInfo.value = null
             }
         }
-    }
-
-    /**
-     * 用户在更新提醒对话框点击"立即更新"。
-     */
-    fun startUpdateDownload() {
-        val info = _updateInfo.value ?: return
-        addLog("⬇️ 开始下载更新: ${info.versionName}")
-        updateManager.downloadUpdate(info.downloadUrl)
-    }
-
-    /**
-     * 用户在更新提醒对话框点击"稍后再说"，清除提醒状态。
-     */
-    fun dismissUpdateReminder() {
-        _updateInfo.value = null
     }
 
     private suspend fun startConnection() {

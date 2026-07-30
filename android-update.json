@@ -1,1 +1,1 @@
-{"versionCode": 72, "versionName": "1.8.8", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.8.apk", "changelog": "修复退出APP后后台未清理、再次进入一直连接断开的问题：1.WebSocket断开时取消挂起的重连任务，避免后台持续重连干扰下次进入；2.重连任务串行化，避免多个重连并发竞争导致连接反复断开；3.ViewModel初始化防重复，避免Compose重组时重复订阅和重复连接"}
+{"versionCode": 73, "versionName": "1.8.9", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.9.apk", "changelog": "优化更新提醒体验：1.移除原有更新弹窗提醒；2.主界面设置图标右上角显示红点提示有新版本；3.设置页面检查更新按钮显示红点提示有新版本；4.清理不再使用的更新对话框相关代码"}
