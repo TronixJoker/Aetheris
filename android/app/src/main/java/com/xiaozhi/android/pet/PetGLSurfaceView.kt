@@ -21,6 +21,8 @@ class ObjModel {
         private set
     var normals: FloatArray = FloatArray(0)
         private set
+    var textureCoords: FloatArray = FloatArray(0)
+        private set
     var vertexCount: Int = 0
         private set
 
@@ -29,6 +31,9 @@ class ObjModel {
         private set
     /** 法线缓冲 */
     var normalBuffer: FloatBuffer? = null
+        private set
+    /** 纹理坐标缓冲（平面投影 UV） */
+    var textureBuffer: FloatBuffer? = null
         private set
 
     /**
@@ -80,16 +85,37 @@ class ObjModel {
             reader.close()
             inputStream.close()
 
-            // 构建展开后的顶点数组（每个面 3 个顶点 × 3 浮点）
+            // 计算顶点 X/Y 边界（用于平面投影 UV）
+            var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
+            var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            for (i in tempVertices.indices step 3) {
+                val x = tempVertices[i]
+                val y = tempVertices[i + 1]
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+            }
+            val rangeX = (maxX - minX).coerceAtLeast(0.001f)
+            val rangeY = (maxY - minY).coerceAtLeast(0.001f)
+
+            // 构建展开后的顶点数组（每个面 3 个顶点 × 3 浮点）+ UV 坐标
             vertexCount = tempFaces.size * 3
             vertices = FloatArray(vertexCount * 3)
+            textureCoords = FloatArray(vertexCount * 2)
             var idx = 0
+            var uvi = 0
             for (face in tempFaces) {
                 for (vi in 0 until 3) {
                     val srcIdx = face[vi] * 3
-                    vertices[idx++] = tempVertices[srcIdx]
-                    vertices[idx++] = tempVertices[srcIdx + 1]
+                    val x = tempVertices[srcIdx]
+                    val y = tempVertices[srcIdx + 1]
+                    vertices[idx++] = x
+                    vertices[idx++] = y
                     vertices[idx++] = tempVertices[srcIdx + 2]
+                    // 平面投影 UV：X→U，Y→V（V 翻转，因图片 Y 轴向下）
+                    textureCoords[uvi++] = (x - minX) / rangeX
+                    textureCoords[uvi++] = 1f - (y - minY) / rangeY
                 }
             }
 
@@ -135,6 +161,13 @@ class ObjModel {
                 position(0)
             }
 
+            val tbb = ByteBuffer.allocateDirect(textureCoords.size * 4)
+            tbb.order(ByteOrder.nativeOrder())
+            textureBuffer = tbb.asFloatBuffer().apply {
+                put(textureCoords)
+                position(0)
+            }
+
             Log.i(TAG, "OBJ loaded: $vertexCount vertices, ${tempFaces.size} faces")
             return true
         } catch (e: Exception) {
@@ -174,7 +207,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             Log.e(TAG, "Failed to load robot model, fallback to nothing")
         }
 
-        petRenderer = PetRenderer(model)
+        petRenderer = PetRenderer(context, model)
         setRenderer(petRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
@@ -183,13 +216,14 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         petRenderer.state = state
     }
 
-    class PetRenderer(private val model: ObjModel) : GLSurfaceView.Renderer {
+    class PetRenderer(private val context: Context, private val model: ObjModel) : GLSurfaceView.Renderer {
         var state: Int = 0
             set(value) { field = value }
 
         private var rotation = 0f
         private var swayAngle = 0f
         private var timeMs: Long = 0L
+        private var textureId: Int = 0
 
         override fun onSurfaceCreated(gl: GL10, config: EGLConfig) {
             gl.glClearColor(0f, 0f, 0f, 0f)
@@ -200,19 +234,65 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             gl.glEnable(GL10.GL_LIGHTING)
             gl.glEnable(GL10.GL_LIGHT0)
 
-            // 环境光（更亮）
-            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_AMBIENT, floatArrayOf(0.5f, 0.5f, 0.55f, 1f), 0)
-            // 漫反射光（柔和白光）
-            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_DIFFUSE, floatArrayOf(0.95f, 0.95f, 0.98f, 1f), 0)
+            // 环境光（明亮，让纹理白色区域保持白色）
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_AMBIENT, floatArrayOf(0.85f, 0.85f, 0.88f, 1f), 0)
+            // 漫反射光（柔和，提供立体感）
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_DIFFUSE, floatArrayOf(0.5f, 0.5f, 0.52f, 1f), 0)
             gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_POSITION, floatArrayOf(3f, 6f, 4f, 1f), 0)
-            // 镜面光（更强）
-            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_SPECULAR, floatArrayOf(0.7f, 0.7f, 0.75f, 1f), 0)
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_SPECULAR, floatArrayOf(0.3f, 0.3f, 0.32f, 1f), 0)
 
-            // 深灰材质（匹配 APP 内 2D 图片 ic_pet.png 的黑白线稿色调）
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_AMBIENT, floatArrayOf(0.35f, 0.35f, 0.36f, 1f), 0)
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_DIFFUSE, floatArrayOf(0.22f, 0.22f, 0.23f, 1f), 0)
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_SPECULAR, floatArrayOf(0.5f, 0.5f, 0.52f, 1f), 0)
-            gl.glMaterialf(GL10.GL_FRONT_AND_BACK, GL10.GL_SHININESS, 40f)
+            // 白色材质（纹理提供颜色，材质保持白色让 GL_MODULATE 不改变纹理色）
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_AMBIENT, floatArrayOf(1f, 1f, 1f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_DIFFUSE, floatArrayOf(1f, 1f, 1f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_SPECULAR, floatArrayOf(0.3f, 0.3f, 0.3f, 1f), 0)
+            gl.glMaterialf(GL10.GL_FRONT_AND_BACK, GL10.GL_SHININESS, 30f)
+
+            // 加载 2D 图片作为纹理（透明背景预处理为白色）
+            loadTexture(gl)
+        }
+
+        /**
+         * 加载 ic_pet.png 作为纹理，透明像素替换为白色。
+         * 这样 3D 模型表面显示 2D 图片的黑白线稿：白的地方白、黑的地方黑。
+         */
+        private fun loadTexture(gl: GL10) {
+            try {
+                val rawBitmap = android.graphics.BitmapFactory.decodeResource(
+                    context.resources, com.xiaozhi.android.R.drawable.ic_pet
+                )
+                if (rawBitmap == null) {
+                    Log.e(TAG, "Failed to decode ic_pet texture")
+                    return
+                }
+                // 预处理：透明像素 → 白色（让模型实体显示，不透明）
+                val w = rawBitmap.width
+                val h = rawBitmap.height
+                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                val pixels = IntArray(w * h)
+                rawBitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+                for (i in pixels.indices) {
+                    val alpha = (pixels[i] shr 24) and 0xFF
+                    if (alpha < 128) {
+                        pixels[i] = 0xFFFFFFFF.toInt()  // 透明 → 白色
+                    }
+                }
+                bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+                rawBitmap.recycle()
+
+                val textures = IntArray(1)
+                gl.glGenTextures(1, textures, 0)
+                textureId = textures[0]
+                gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
+                gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_LINEAR.toFloat())
+                gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER, GL10.GL_LINEAR.toFloat())
+                gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S, GL10.GL_CLAMP_TO_EDGE.toFloat())
+                gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T, GL10.GL_CLAMP_TO_EDGE.toFloat())
+                android.opengl.GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bmp, 0)
+                bmp.recycle()
+                Log.i(TAG, "Texture loaded: ic_pet ${w}x${h}, id=$textureId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load texture: ${e.message}", e)
+            }
         }
 
         override fun onSurfaceChanged(gl: GL10, width: Int, height: Int) {
@@ -260,6 +340,17 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             val vb = model.vertexBuffer ?: return
             val nb = model.normalBuffer ?: return
 
+            // 启用 2D 纹理（贴上 2D 图片，该白的地方白、该黑的地方黑）
+            if (textureId != 0) {
+                gl.glEnable(GL10.GL_TEXTURE_2D)
+                gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
+                gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE.toFloat())
+                gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
+                model.textureBuffer?.let { tb ->
+                    gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, tb)
+                }
+            }
+
             gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
             gl.glEnableClientState(GL10.GL_NORMAL_ARRAY)
 
@@ -269,6 +360,11 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
             gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
             gl.glDisableClientState(GL10.GL_NORMAL_ARRAY)
+
+            if (textureId != 0) {
+                gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
+                gl.glDisable(GL10.GL_TEXTURE_2D)
+            }
         }
 
         companion object {

@@ -1,1 +1,1 @@
-{"versionCode": 76, "versionName": "1.9.2", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.2.apk", "changelog": "桌面宠物3D模型颜色调整：将纯白材质改为深灰色，匹配APP内2D图片的黑白线稿色调；保留语音热词唤醒功能"}
+{"versionCode": 77, "versionName": "1.9.3", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.3.apk", "changelog": "桌面宠物3D模型贴上2D图片纹理：把ic_pet.png作为纹理贴到3D模型表面，该白的地方白、该黑的地方黑，和APP内2D图片颜色完全一致；透明背景自动处理为白色"}
