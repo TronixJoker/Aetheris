@@ -1,1 +1,1 @@
-{"versionCode": 73, "versionName": "1.8.9", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.8.9.apk", "changelog": "优化更新提醒体验：1.移除原有更新弹窗提醒；2.主界面设置图标右上角显示红点提示有新版本；3.设置页面检查更新按钮显示红点提示有新版本；4.清理不再使用的更新对话框相关代码"}
+{"versionCode": 74, "versionName": "1.9.0", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.0.apk", "changelog": "1.彩色机器人：Canvas重绘彩色机器人头部(深蓝)+身体(橙色)+手臂(蓝色)，替代原有黑白线稿；2.手臂独立活动：左右手臂可单独摆动，说话时挥手、聆听时微动；3.语音热词唤醒：说「珩杬」自动开始聆听，随叫随到，无需手动点击按钮"}

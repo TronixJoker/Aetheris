@@ -24,7 +24,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -450,6 +452,36 @@ fun EmotionDisplay(
         (0.3f + 0.7f * (raw * 0.5f + 0.5f))
     } else 0f
 
+    // 左右手臂独立摆动（说话时挥手，聆听时微动，互相反相）
+    val armPhase = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    LaunchedEffect(deviceState) {
+        when (deviceState) {
+            DeviceState.SPEAKING -> {
+                while (true) {
+                    kotlinx.coroutines.delay(40)
+                    armPhase.floatValue += 0.25f
+                }
+            }
+            DeviceState.LISTENING -> {
+                while (true) {
+                    kotlinx.coroutines.delay(60)
+                    armPhase.floatValue += 0.15f
+                }
+            }
+            else -> {}
+        }
+    }
+    val leftArmSwing = when (deviceState) {
+        DeviceState.SPEAKING -> 18f * kotlin.math.sin(armPhase.floatValue).toFloat()
+        DeviceState.LISTENING -> 8f * kotlin.math.sin(armPhase.floatValue).toFloat()
+        else -> 0f
+    }
+    val rightArmSwing = when (deviceState) {
+        DeviceState.SPEAKING -> 18f * kotlin.math.sin(armPhase.floatValue + Math.PI.toFloat()).toFloat()
+        DeviceState.LISTENING -> 8f * kotlin.math.sin(armPhase.floatValue + Math.PI.toFloat()).toFloat()
+        else -> 0f
+    }
+
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
@@ -458,20 +490,7 @@ fun EmotionDisplay(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // 机器人主体图片（身体+头部整体，应用身体摇摆和浮动）
-                Image(
-                    painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_pet),
-                    contentDescription = "小智",
-                    modifier = Modifier
-                        .size(280.dp)
-                        .scale(scale * breathScale)
-                        .graphicsLayer {
-                            rotationZ = bodyRotation
-                            translationY = bodyOffsetY + shakeOffset
-                            translationX = shakeOffset
-                        }
-                )
-                // 面部表情（跟随图片同步运动，完全相同的变换）
+                // 彩色机器人（Canvas 重绘：天线+手臂+身体+头部+面部，手臂独立动画）
                 androidx.compose.foundation.Canvas(
                     modifier = Modifier
                         .size(280.dp)
@@ -482,7 +501,15 @@ fun EmotionDisplay(
                             translationX = shakeOffset
                         }
                 ) {
-                    drawFaceExpression(deviceState, naturalMouthOpen, blinkAlpha, emotion, blinkScale, breathScale)
+                    drawRobotBody(
+                        deviceState = deviceState,
+                        leftArmSwing = leftArmSwing,
+                        rightArmSwing = rightArmSwing,
+                        mouthOpen = naturalMouthOpen,
+                        blinkAlpha = blinkAlpha,
+                        emotion = emotion,
+                        blinkScale = blinkScale
+                    )
                 }
             }
 
@@ -499,7 +526,172 @@ fun EmotionDisplay(
 }
 
 /**
- * 在2D图片上叠加绘制面部表情（眼睛和嘴巴）。
+ * 用 Canvas 绘制彩色机器人（替代黑白线稿图片）。
+ * 分层绘制：天线 → 手臂(独立旋转) → 身体 → 头部 → 面部表情。
+ */
+private fun DrawScope.drawRobotBody(
+    deviceState: DeviceState,
+    leftArmSwing: Float,
+    rightArmSwing: Float,
+    mouthOpen: Float,
+    blinkAlpha: Float,
+    emotion: String,
+    blinkScale: Float
+) {
+    val w = size.width
+    val h = size.height
+    val cx = w * 0.5f
+
+    // 配色
+    val headColor = Color(0xFF1565C0)
+    val headHighlight = Color(0xFF42A5F5)
+    val screenColor = Color(0xFF0D1B2A)
+    val bodyColor = Color(0xFFFF9800)
+    val bodyHighlight = Color(0xFFFFCC80)
+    val armColor = Color(0xFF1976D2)
+    val armJointColor = Color(0xFF64B5F6)
+    val antennaColor = Color(0xFF9E9E9E)
+    val antennaBallColor = Color(0xFFF44336)
+    val indicatorColor = when (deviceState) {
+        DeviceState.LISTENING -> Color(0xFF4CAF50)
+        DeviceState.SPEAKING -> Color(0xFF2196F3)
+        DeviceState.CONNECTING -> Color(0xFFFF9800)
+        else -> Color(0xFF9E9E9E)
+    }
+    val cr = w * 0.06f
+
+    // === 1. 天线 ===
+    val antennaX = cx
+    val antennaTopY = h * 0.03f
+    val antennaBaseY = h * 0.1f
+    drawLine(
+        color = antennaColor,
+        start = Offset(antennaX, antennaBaseY),
+        end = Offset(antennaX, antennaTopY),
+        strokeWidth = w * 0.012f,
+        cap = StrokeCap.Round
+    )
+    drawCircle(antennaBallColor, w * 0.02f, Offset(antennaX, antennaTopY))
+    // 天线球光晕
+    drawCircle(antennaBallColor.copy(alpha = 0.25f), w * 0.035f, Offset(antennaX, antennaTopY))
+
+    // === 2. 手臂（左右独立旋转） ===
+    val shoulderY = h * 0.55f
+    val armLength = h * 0.2f
+    val armWidth = w * 0.07f
+    val leftShoulderX = cx - w * 0.21f
+    val rightShoulderX = cx + w * 0.21f
+
+    // 左臂
+    rotate(degrees = leftArmSwing, pivot = Offset(leftShoulderX, shoulderY)) {
+        drawRoundRect(
+            color = armColor,
+            topLeft = Offset(leftShoulderX - armWidth / 2, shoulderY),
+            size = Size(armWidth, armLength),
+            cornerRadius = CornerRadius(armWidth / 2, armWidth / 2)
+        )
+        // 手臂高光
+        drawRoundRect(
+            color = armJointColor.copy(alpha = 0.3f),
+            topLeft = Offset(leftShoulderX - armWidth / 2, shoulderY),
+            size = Size(armWidth * 0.4f, armLength),
+            cornerRadius = CornerRadius(armWidth / 2, armWidth / 2)
+        )
+        // 肩膀关节
+        drawCircle(armJointColor, armWidth * 0.55f, Offset(leftShoulderX, shoulderY))
+        // 手
+        drawCircle(armColor, armWidth * 0.65f, Offset(leftShoulderX, shoulderY + armLength))
+    }
+
+    // 右臂
+    rotate(degrees = rightArmSwing, pivot = Offset(rightShoulderX, shoulderY)) {
+        drawRoundRect(
+            color = armColor,
+            topLeft = Offset(rightShoulderX - armWidth / 2, shoulderY),
+            size = Size(armWidth, armLength),
+            cornerRadius = CornerRadius(armWidth / 2, armWidth / 2)
+        )
+        drawRoundRect(
+            color = armJointColor.copy(alpha = 0.3f),
+            topLeft = Offset(rightShoulderX - armWidth / 2, shoulderY),
+            size = Size(armWidth * 0.4f, armLength),
+            cornerRadius = CornerRadius(armWidth / 2, armWidth / 2)
+        )
+        drawCircle(armJointColor, armWidth * 0.55f, Offset(rightShoulderX, shoulderY))
+        drawCircle(armColor, armWidth * 0.65f, Offset(rightShoulderX, shoulderY + armLength))
+    }
+
+    // === 3. 身体 ===
+    val bodyTop = h * 0.5f
+    val bodyHeight = h * 0.4f
+    val bodyWidth = w * 0.42f
+    // 身体主体
+    drawRoundRect(
+        color = bodyColor,
+        topLeft = Offset(cx - bodyWidth / 2, bodyTop),
+        size = Size(bodyWidth, bodyHeight),
+        cornerRadius = CornerRadius(cr, cr)
+    )
+    // 身体高光（上半部分浅色）
+    drawRoundRect(
+        color = bodyHighlight.copy(alpha = 0.5f),
+        topLeft = Offset(cx - bodyWidth / 2, bodyTop),
+        size = Size(bodyWidth, bodyHeight * 0.35f),
+        cornerRadius = CornerRadius(cr, cr)
+    )
+    // 胸前指示灯（光晕 + 核心）
+    val indicatorCenter = Offset(cx, bodyTop + bodyHeight * 0.3f)
+    drawCircle(indicatorColor.copy(alpha = 0.25f), w * 0.06f, indicatorCenter)
+    drawCircle(indicatorColor, w * 0.03f, indicatorCenter)
+    drawCircle(Color.White.copy(alpha = 0.5f), w * 0.01f, indicatorCenter)
+    // 装饰按钮
+    drawCircle(Color(0xFF424242), w * 0.012f, Offset(cx - w * 0.07f, bodyTop + bodyHeight * 0.55f))
+    drawCircle(Color(0xFF424242), w * 0.012f, Offset(cx + w * 0.07f, bodyTop + bodyHeight * 0.55f))
+
+    // === 4. 头部 ===
+    val headTop = h * 0.1f
+    val headHeight = h * 0.36f
+    val headWidth = w * 0.48f
+    // 头部主体
+    drawRoundRect(
+        color = headColor,
+        topLeft = Offset(cx - headWidth / 2, headTop),
+        size = Size(headWidth, headHeight),
+        cornerRadius = CornerRadius(cr, cr)
+    )
+    // 头部高光
+    drawRoundRect(
+        color = headHighlight.copy(alpha = 0.35f),
+        topLeft = Offset(cx - headWidth / 2, headTop),
+        size = Size(headWidth, headHeight * 0.35f),
+        cornerRadius = CornerRadius(cr, cr)
+    )
+    // 头部屏幕（面部区域，深色背景让青色表情更醒目）
+    val screenW = w * 0.36f
+    val screenH = h * 0.22f
+    val screenCx = cx
+    val screenCy = h * 0.235f
+    drawRoundRect(
+        color = screenColor,
+        topLeft = Offset(screenCx - screenW / 2, screenCy - screenH / 2),
+        size = Size(screenW, screenH),
+        cornerRadius = CornerRadius(w * 0.025f, w * 0.025f)
+    )
+    // 屏幕边框
+    drawRoundRect(
+        color = Color(0xFF1A237E).copy(alpha = 0.6f),
+        topLeft = Offset(screenCx - screenW / 2, screenCy - screenH / 2),
+        size = Size(screenW, screenH),
+        cornerRadius = CornerRadius(w * 0.025f, w * 0.025f),
+        style = Stroke(width = w * 0.004f)
+    )
+
+    // === 5. 面部表情（绘制在屏幕上） ===
+    drawFaceExpression(deviceState, mouthOpen, blinkAlpha, emotion, blinkScale)
+}
+
+/**
+ * 在头部屏幕上绘制面部表情（眼睛和嘴巴）。
  * 根据设备状态绘制不同的表情。
  */
 private fun DrawScope.drawFaceExpression(
@@ -513,11 +705,11 @@ private fun DrawScope.drawFaceExpression(
     val w = size.width
     val h = size.height
 
-    // 面部表情位置（用户微调：右移+上移）
-    val faceCenterX = w * 0.515f
-    val faceCenterY = h * 0.235f
-    val eyeSpacing = w * 0.04f
-    val eyeY = faceCenterY - h * 0.025f
+    // 面部表情位置（居中在头部屏幕区域）
+    val faceCenterX = w * 0.5f
+    val faceCenterY = h * 0.225f
+    val eyeSpacing = w * 0.045f
+    val eyeY = faceCenterY - h * 0.02f
     val mouthY = faceCenterY + h * 0.045f
 
     val eyeColor = Color(0xFF00E5FF)

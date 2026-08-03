@@ -39,6 +39,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val musicPlayer = MusicPlayerManager()
     val updateManager = UpdateManager(application)
 
+    // 热词唤醒检测器（检测"珩杬"自动触发聆听）
+    private var wakeWordDetector: com.xiaozhi.android.audio.WakeWordDetector? = null
+    private var wakeWordJob: kotlinx.coroutines.Job? = null
+
     // 更新提醒状态：非 null 表示有可用更新，UI 在设置入口显示红点提醒
     private val _updateInfo = MutableStateFlow<UpdateManager.UpdateResult?>(null)
     val updateInfo: StateFlow<UpdateManager.UpdateResult?> = _updateInfo
@@ -202,11 +206,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // 热词唤醒：IDLE 状态持续检测"珩杬"，检测到自动开始聆听
+        viewModelScope.launch {
+            _deviceState.collect { state ->
+                wakeWordJob?.cancel()
+                when (state) {
+                    DeviceState.IDLE -> {
+                        // 延迟启动，避免 TTS 结束后自动继续聆听的短暂 IDLE 误触发
+                        wakeWordJob = viewModelScope.launch {
+                            kotlinx.coroutines.delay(2000)
+                            if (_deviceState.value == DeviceState.IDLE) {
+                                startWakeWordDetection()
+                            }
+                        }
+                    }
+                    else -> {
+                        wakeWordDetector?.stop()
+                    }
+                }
+            }
+        }
+
         // 启动后自动检查更新（延迟 3 秒，避免与启动连接争抢网络）
         viewModelScope.launch {
             kotlinx.coroutines.delay(3000)
             checkForUpdates()
         }
+    }
+
+    /**
+     * 启动热词检测（仅在已连接且音频通道就绪时）。
+     * SpeechRecognizer 占用麦克风，需确保 AudioRecorder 已停止。
+     */
+    private fun startWakeWordDetection() {
+        if (webSocketManager.connectionState.value != WebSocketManager.ConnectionState.CONNECTED) return
+        if (!audioChannelOpened) return
+        if (wakeWordDetector == null) {
+            wakeWordDetector = com.xiaozhi.android.audio.WakeWordDetector(
+                context = getApplication(),
+                onWakeWordDetected = {
+                    addLog("🔔 检测到唤醒词「珩杬」，开始聆听...")
+                    wakeWordDetector?.stop()
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(500)
+                        startListening()
+                    }
+                }
+            )
+        }
+        wakeWordDetector?.start()
     }
 
     /**
@@ -1270,6 +1318,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         (getApplication<Application>() as? XiaozhiApp)?.lastViewModel = null
         isRunning = false
+        wakeWordDetector?.stop()
         audioRecorder.destroy()
         audioPlayer.destroy()
         opusCodec.release()
