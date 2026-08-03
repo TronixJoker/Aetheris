@@ -107,6 +107,62 @@ class ConfigManager:
                 "PIL": "WARNING",
             },
         },
+        # Agent 模式：本地自主任务执行子系统（与现有语音助手完全隔离）
+        # ENABLED=false 时现有 app 行为零变化，agent 子系统不会被 import
+        "AGENT_MODE": {
+            "ENABLED": False,
+            "LLM": {
+                # 默认智谱 GLM-4.6（项目摄像头 VL 已在用智谱 open.bigmodel.cn）
+                # 可切换 DeepSeek / glm-4-flash（免费）等 OpenAI 兼容服务
+                "BASE_URL": "https://open.bigmodel.cn/api/paas/v4/",
+                "API_KEY": "",
+                "MODEL": "glm-4.6",
+                "TEMPERATURE": 0.2,
+            },
+            "WORKSPACE": {
+                # 空字符串 = 使用默认沙箱目录（user_data_dir/agent_workspace）
+                "ROOT": "",
+                "ALLOW_OUTSIDE": False,
+            },
+            "SAFETY": {
+                "CONFIRM_DESTRUCTIVE": True,
+                # 命中以下任一模式即弹确认（破坏性操作）
+                "DESTRUCTIVE_PATTERNS": [
+                    "rm ", "rmdir", "dd ", "mkfs", "> ", ">>",
+                    "chmod -R", "chown -R",
+                    "git push --force", "git push -f",
+                    "git reset --hard", "git clean -fd",
+                    "git commit --amend", "git rebase -i",
+                    "git branch -D",
+                    "kill ", "shutdown", "reboot",
+                ],
+                "COMMAND_TIMEOUT": 60,        # 单命令超时秒
+                "MAX_OUTPUT_CHARS": 8000,     # 输出截断（防爆上下文）
+                "MAX_ITERATIONS": 30,         # agent 循环上限防失控
+            },
+            "VERIFY": {
+                # 代码修改后自动验证，失败则喂回 LLM 继续修（准确性护栏）
+                "ENABLED": True,
+                "LINT_CMD": "ruff check {files}",
+                "TEST_CMD": "pytest -q",
+                "TYPECHECK_CMD": "",          # 留空跳过
+            },
+            "GIT": {
+                # null = 不自动 add，强制 LLM 显式 git_add（防误加敏感文件）
+                "AUTO_ADD_PATTERN": None,
+                # 这些路径 git_add 直接拒绝（防误提交密钥）
+                "BLOCK_SECRETS": [
+                    "*.env", "*.key", "*.pem", "credentials*", ".git/",
+                    "*.p12", "*.jks", "id_rsa*", "*.keystore",
+                ],
+            },
+            "GITHUB": {
+                # PAT 写配置 + aiohttp 直调 GitHub REST API（不依赖 gh CLI）
+                "AUTH_MODE": "pat",           # pat | disabled
+                "TOKEN": "",                  # 落盘需 0600 权限 + 审计 mask
+                "DEFAULT_REMOTE": "origin",
+            },
+        },
     }
 
     def __new__(cls):
@@ -264,6 +320,31 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"配置重新加载失败: {e}")
             return False
+
+    def get_agent_workspace_dir(self):
+        """
+        获取 Agent 模式工作沙箱目录（可写）.
+
+        - 若 AGENT_MODE.WORKSPACE.ROOT 为空，使用默认沙箱目录
+          （user_data_dir/agent_workspace），跨平台一致。
+        - 调用此方法时会按需创建目录（exist_ok）。
+        - Agent 子系统启动时调用；P0 阶段不自动调用，现有 app 行为不受影响。
+
+        Returns:
+            pathlib.Path: 沙箱目录绝对路径
+        """
+        from pathlib import Path
+
+        root = self.get_config("AGENT_MODE.WORKSPACE.ROOT", "")
+        if root:
+            workspace = Path(root).expanduser()
+        else:
+            # 延迟 import 避免循环依赖
+            from src.utils.resource_finder import get_user_data_dir
+
+            workspace = get_user_data_dir() / "agent_workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        return workspace
 
     def generate_uuid(self) -> str:
         """

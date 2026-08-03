@@ -1062,3 +1062,113 @@ class SettingsModel(BaseModel):
         except Exception as e:
             logger.error(f"摄像头测试失败: {e}")
             self.statusMessage.emit(f"[错误] {str(e)}")
+
+    # ========== Agent 模式设置 ==========
+    # 与现有语音助手完全隔离的本地自主任务执行子系统。
+    # ENABLED=false 时 agent 子系统不会被 import，现有 app 行为零变化。
+
+    # 总开关
+    def _get_agentModeEnabled(self) -> bool:
+        return self._get_value("AGENT_MODE.ENABLED", False)
+
+    def _set_agentModeEnabled(self, value: bool):
+        self._set_value("AGENT_MODE.ENABLED", value)
+
+    agentModeEnabled = Property(
+        bool, _get_agentModeEnabled, _set_agentModeEnabled, notify=settingsChanged
+    )
+
+    # LLM 配置
+    def _get_agentLlmBaseUrl(self) -> str:
+        return self._get_value("AGENT_MODE.LLM.BASE_URL", "")
+
+    def _set_agentLlmBaseUrl(self, value: str):
+        self._set_value("AGENT_MODE.LLM.BASE_URL", value)
+
+    agentLlmBaseUrl = Property(
+        str, _get_agentLlmBaseUrl, _set_agentLlmBaseUrl, notify=settingsChanged
+    )
+
+    def _get_agentLlmApiKey(self) -> str:
+        return self._get_value("AGENT_MODE.LLM.API_KEY", "")
+
+    def _set_agentLlmApiKey(self, value: str):
+        self._set_value("AGENT_MODE.LLM.API_KEY", value)
+
+    agentLlmApiKey = Property(
+        str, _get_agentLlmApiKey, _set_agentLlmApiKey, notify=settingsChanged
+    )
+
+    def _get_agentLlmModel(self) -> str:
+        return self._get_value("AGENT_MODE.LLM.MODEL", "glm-4.6")
+
+    def _set_agentLlmModel(self, value: str):
+        self._set_value("AGENT_MODE.LLM.MODEL", value)
+
+    agentLlmModel = Property(
+        str, _get_agentLlmModel, _set_agentLlmModel, notify=settingsChanged
+    )
+
+    # 工作沙箱目录
+    def _get_agentWorkspaceRoot(self) -> str:
+        return self._get_value("AGENT_MODE.WORKSPACE.ROOT", "")
+
+    def _set_agentWorkspaceRoot(self, value: str):
+        self._set_value("AGENT_MODE.WORKSPACE.ROOT", value)
+
+    agentWorkspaceRoot = Property(
+        str, _get_agentWorkspaceRoot, _set_agentWorkspaceRoot, notify=settingsChanged
+    )
+
+    # 安全：破坏性操作确认
+    def _get_agentConfirmDestructive(self) -> bool:
+        return self._get_value("AGENT_MODE.SAFETY.CONFIRM_DESTRUCTIVE", True)
+
+    def _set_agentConfirmDestructive(self, value: bool):
+        self._set_value("AGENT_MODE.SAFETY.CONFIRM_DESTRUCTIVE", value)
+
+    agentConfirmDestructive = Property(
+        bool,
+        _get_agentConfirmDestructive,
+        _set_agentConfirmDestructive,
+        notify=settingsChanged,
+    )
+
+    # 验证护栏开关
+    def _get_agentVerifyEnabled(self) -> bool:
+        return self._get_value("AGENT_MODE.VERIFY.ENABLED", True)
+
+    def _set_agentVerifyEnabled(self, value: bool):
+        self._set_value("AGENT_MODE.VERIFY.ENABLED", value)
+
+    agentVerifyEnabled = Property(
+        bool,
+        _get_agentVerifyEnabled,
+        _set_agentVerifyEnabled,
+        notify=settingsChanged,
+    )
+
+    # GitHub 鉴权模式
+    def _get_agentGithubAuthMode(self) -> str:
+        return self._get_value("AGENT_MODE.GITHUB.AUTH_MODE", "pat")
+
+    def _set_agentGithubAuthMode(self, value: str):
+        self._set_value("AGENT_MODE.GITHUB.AUTH_MODE", value)
+
+    agentGithubAuthMode = Property(
+        str,
+        _get_agentGithubAuthMode,
+        _set_agentGithubAuthMode,
+        notify=settingsChanged,
+    )
+
+    # GitHub Token
+    def _get_agentGithubToken(self) -> str:
+        return self._get_value("AGENT_MODE.GITHUB.TOKEN", "")
+
+    def _set_agentGithubToken(self, value: str):
+        self._set_value("AGENT_MODE.GITHUB.TOKEN", value)
+
+    agentGithubToken = Property(
+        str, _get_agentGithubToken, _set_agentGithubToken, notify=settingsChanged
+    )
