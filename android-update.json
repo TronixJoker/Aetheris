@@ -1,1 +1,1 @@
-{"versionCode": 74, "versionName": "1.9.0", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.0.apk", "changelog": "1.彩色机器人：Canvas重绘彩色机器人头部(深蓝)+身体(橙色)+手臂(蓝色)，替代原有黑白线稿；2.手臂独立活动：左右手臂可单独摆动，说话时挥手、聆听时微动；3.语音热词唤醒：说「珩杬」自动开始聆听，随叫随到，无需手动点击按钮"}
+{"versionCode": 75, "versionName": "1.9.1", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.1.apk", "changelog": "1.恢复原有机器人外观（保留原始模型图片）；2.移除Canvas重绘的彩色机器人和手臂独立动画；3.保留语音热词唤醒功能：说「珩杬」自动开始聆听"}
