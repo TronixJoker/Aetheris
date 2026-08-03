@@ -1,1 +1,1 @@
-{"versionCode": 75, "versionName": "1.9.1", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.1.apk", "changelog": "1.恢复原有机器人外观（保留原始模型图片）；2.移除Canvas重绘的彩色机器人和手臂独立动画；3.保留语音热词唤醒功能：说「珩杬」自动开始聆听"}
+{"versionCode": 76, "versionName": "1.9.2", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/xiaozhi-v1.9.2.apk", "changelog": "桌面宠物3D模型颜色调整：将纯白材质改为深灰色，匹配APP内2D图片的黑白线稿色调；保留语音热词唤醒功能"}

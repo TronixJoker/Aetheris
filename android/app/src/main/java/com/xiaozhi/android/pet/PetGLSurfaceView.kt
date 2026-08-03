@@ -208,11 +208,11 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             // 镜面光（更强）
             gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_SPECULAR, floatArrayOf(0.7f, 0.7f, 0.75f, 1f), 0)
 
-            // 白色材质（可爱卡通风格）
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_AMBIENT, floatArrayOf(0.9f, 0.9f, 0.92f, 1f), 0)
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_DIFFUSE, floatArrayOf(0.98f, 0.98f, 0.99f, 1f), 0)
-            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_SPECULAR, floatArrayOf(0.8f, 0.8f, 0.85f, 1f), 0)
-            gl.glMaterialf(GL10.GL_FRONT_AND_BACK, GL10.GL_SHININESS, 60f)
+            // 深灰材质（匹配 APP 内 2D 图片 ic_pet.png 的黑白线稿色调）
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_AMBIENT, floatArrayOf(0.35f, 0.35f, 0.36f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_DIFFUSE, floatArrayOf(0.22f, 0.22f, 0.23f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_SPECULAR, floatArrayOf(0.5f, 0.5f, 0.52f, 1f), 0)
+            gl.glMaterialf(GL10.GL_FRONT_AND_BACK, GL10.GL_SHININESS, 40f)
         }
 
         override fun onSurfaceChanged(gl: GL10, width: Int, height: Int) {
