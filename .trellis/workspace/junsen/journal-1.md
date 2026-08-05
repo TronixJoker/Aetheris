@@ -1137,7 +1137,7 @@ system.py 为版本/名称唯一真相源，新建 release.py 替代 release.js 
 
 ### Summary
 
-项目定位从语音客户端升级为跨平台多模态 AI 交互主控框架；英文 README 重写突出 embodied AI / edge computing；VitePress tagline 同步；添加 py-xiaozhi.spec
+项目定位从语音客户端升级为跨平台多模态 AI 交互主控框架；英文 README 重写突出 embodied AI / edge computing；VitePress tagline 同步；添加 Aetheris.spec
 
 ### Main Changes
 

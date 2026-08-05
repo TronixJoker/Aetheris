@@ -1,4 +1,4 @@
-# py-xiaozhi 依赖
+# Aetheris 依赖
 # 推荐使用 uv: uv sync
 # 或者: pip install -r requirements.txt
 

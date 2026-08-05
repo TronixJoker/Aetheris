@@ -1,12 +1,12 @@
 ---
 title: 相关生态
-description: py-xiaozhi项目相关的生态系统项目
+description: Aetheris项目相关的生态系统项目
 outline: deep
 ---
 
 # 相关生态
 
-收集和展示 py-xiaozhi 项目相关的生态系统项目。
+收集和展示 Aetheris 项目相关的生态系统项目。
 
 ## 生态项目
 

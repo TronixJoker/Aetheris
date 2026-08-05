@@ -1,6 +1,6 @@
 #!/bin/bash
 # 自动清理旧版本APK，只保留最新5个版本
-# 用法：在 py-xiaozhi 目录下运行 bash cleanup_old_apks.sh
+# 用法：在 Aetheris 目录下运行 bash cleanup_old_apks.sh
 
 set -e
 

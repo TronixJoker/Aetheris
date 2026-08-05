@@ -6,7 +6,7 @@
 
 ## What I already know
 
-- `system.py`: `APP_NAME="py-xiaozhi"`, `APP_DISPLAY_NAME="py-xiaozhi"`, `APP_VERSION="2.0.3"`
+- `system.py`: `APP_NAME="Aetheris"`, `APP_DISPLAY_NAME="Aetheris"`, `APP_VERSION="2.0.3"`
 - `build.json`: `name="xiaozhi"`, `display_name="小智"`, `version="1.1.9"` — 与 system.py 不同步
 - `release.js`: 用 `pnpm version` 但项目没有 `package.json`，跑不通
 - `release.yml`: 监听 `v*.*.*` tag，用 release-drafter 创建 GitHub Release
@@ -35,7 +35,7 @@
    - 其余字段（pyinstaller/platforms 配置）保持为 build.json 模板中的值
 
 4. **用户数据目录迁移**：
-   - `resource_finder.py` 的 `get_user_data_dir()` 中检测旧目录 `py-xiaozhi`
+   - `resource_finder.py` 的 `get_user_data_dir()` 中检测旧目录 `Aetheris`
    - 如果旧目录存在且新目录不存在，自动重命名迁移
    - 迁移后 log 提示
 

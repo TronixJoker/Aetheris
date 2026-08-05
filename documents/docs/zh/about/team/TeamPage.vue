@@ -42,7 +42,7 @@ shuffleMembers(membersPartnerData)
     <TeamHero>
       <template #title>团队成员</template>
       <template #lead>
-        py-xiaozhi项目的开发和维护由社区人员负责，
+        Aetheris项目的开发和维护由社区人员负责，
         以下是核心团队成员以及社区贡献者的部分信息。
       </template>
     </TeamHero>
@@ -50,7 +50,7 @@ shuffleMembers(membersPartnerData)
     <TeamList :members="membersCoreData">
       <template #title>核心团队成员</template>
       <template #lead>
-        核心团队成员积极参与项目开发和维护，对py-xiaozhi项目做出了重大贡献。
+        核心团队成员积极参与项目开发和维护，对Aetheris项目做出了重大贡献。
       </template>
     </TeamList>
 

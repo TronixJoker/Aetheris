@@ -1,5 +1,5 @@
 [project]
-name = "py-xiaozhi"
+name = "Aetheris"
 version = "1.0.0"
 description = "小智 AI 客户端 - 跨平台语音助手"
 readme = "README.md"
@@ -90,8 +90,8 @@ linux = [
 xiaozhi = "main:main"
 
 [project.urls]
-Homepage = "https://github.com/huangjunsen0406/py-xiaozhi"
-Repository = "https://github.com/huangjunsen0406/py-xiaozhi"
+Homepage = "https://github.com/huangjunsen0406/Aetheris"
+Repository = "https://github.com/huangjunsen0406/Aetheris"
 
 # ============================================================
 # 依赖组 (uv/pip 通用)

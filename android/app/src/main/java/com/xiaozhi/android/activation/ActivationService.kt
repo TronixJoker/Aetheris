@@ -260,7 +260,7 @@ class ActivationService(private val configManager: ConfigManager) {
             })
             put("board", buildJsonObject {
                 put("type", "bread-compact-wifi")
-                put("name", "py-xiaozhi")
+                put("name", "Aetheris")
                 put("ip", "127.0.0.1")
                 put("mac", deviceId)
             })
@@ -272,7 +272,7 @@ class ActivationService(private val configManager: ConfigManager) {
             .addHeader("Device-Id", deviceId)
             .addHeader("Client-Id", clientId)
             .addHeader("Content-Type", "application/json")
-            .addHeader("User-Agent", "bread-compact-wifi/py-xiaozhi-2.0.8")
+            .addHeader("User-Agent", "bread-compact-wifi/Aetheris-2.0.8")
             .addHeader("Accept-Language", "zh-CN")
             .post(jsonBody)
             .build()

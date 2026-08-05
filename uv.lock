@@ -1543,7 +1543,7 @@ wheels = [
 ]
 
 [[package]]
-name = "py-xiaozhi"
+name = "Aetheris"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

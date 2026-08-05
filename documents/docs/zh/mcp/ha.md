@@ -1,6 +1,6 @@
 # Home Assistant MCP 集成
 
-为提升架构灵活性与稳定性，py-xiaozhi 已移除内置的 Home Assistant（HA）。现可通过基于 WSS 的 Home Assistant MCP 外挂插件接入 HA，与小智 AI 服务器通过 MCP 协议直连，无需任何中转。该插件由 c1pher-cn 开源维护，完整支持设备状态查询、实体控制与自动化管理。
+为提升架构灵活性与稳定性，Aetheris 已移除内置的 Home Assistant（HA）。现可通过基于 WSS 的 Home Assistant MCP 外挂插件接入 HA，与小智 AI 服务器通过 MCP 协议直连，无需任何中转。该插件由 c1pher-cn 开源维护，完整支持设备状态查询、实体控制与自动化管理。
 
 项目地址：[ha-mcp-for-xiaozhi](https://github.com/c1pher-cn/ha-mcp-for-xiaozhi)
 

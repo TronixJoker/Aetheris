@@ -120,7 +120,7 @@ Both packages serve different purposes:
 | RPi OS Bullseye | Yes | Yes | 1.3.1 |
 | RPi OS Bookworm | Yes | Yes | 1.4+ |
 
-### What py-xiaozhi Actually Needs
+### What Aetheris Actually Needs
 
 Looking at `src/utils/opus_loader.py` (line 32-36), the project loads `libopus.so.0` at runtime via `ctypes.CDLL`. It does NOT compile against opus headers. Therefore:
 - `libopus0` (runtime library) is **required**

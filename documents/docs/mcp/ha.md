@@ -1,6 +1,6 @@
 # Home Assistant MCP Integration
 
-To improve architectural flexibility and stability, py-xiaozhi has removed the built-in Home Assistant (HA). You can now connect to HA via the WSS-based Home Assistant MCP external plugin, which connects directly to the XiaoZhi AI server through the MCP protocol without any intermediate relay. This plugin is open-sourced and maintained by c1pher-cn, with full support for device status queries, entity control, and automation management.
+To improve architectural flexibility and stability, Aetheris has removed the built-in Home Assistant (HA). You can now connect to HA via the WSS-based Home Assistant MCP external plugin, which connects directly to the XiaoZhi AI server through the MCP protocol without any intermediate relay. This plugin is open-sourced and maintained by c1pher-cn, with full support for device status queries, entity control, and automation management.
 
 Project Repository: [ha-mcp-for-xiaozhi](https://github.com/c1pher-cn/ha-mcp-for-xiaozhi)
 

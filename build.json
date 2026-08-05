@@ -1,6 +1,6 @@
 {
   "entry": "main.py",
-  "name": "py-xiaozhi",
+  "name": "Aetheris",
   "display_name": "小智",
   "version": "2.0.8",
   "icon": "assets/icon.png",
@@ -19,7 +19,7 @@
   },
   "platforms": {
     "macos": {
-      "bundle_identifier": "com.py-xiaozhi.app",
+      "bundle_identifier": "com.Aetheris.app",
       "minimum_system_version": "10.13",
       "category": "public.app-category.productivity",
       "microphone_usage_description": "此应用需要访问麦克风以实现录音功能",
@@ -52,7 +52,7 @@
     },
     "linux": {
       "deb": {
-        "package": "py-xiaozhi",
+        "package": "Aetheris",
         "section": "utils",
         "priority": "optional",
         "desktop_entry": true,
