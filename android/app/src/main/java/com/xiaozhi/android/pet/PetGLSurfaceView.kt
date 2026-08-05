@@ -273,7 +273,11 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 for (i in pixels.indices) {
                     val alpha = (pixels[i] shr 24) and 0xFF
                     if (alpha < 128) {
-                        pixels[i] = 0xFFFFFFFF.toInt()  // 透明 → 白色
+                        // 透明背景 → 白色（与 2D 图片在 APP 中的显示一致）
+                        pixels[i] = 0xFFFFFFFF.toInt()
+                    } else if (alpha < 255) {
+                        // 半透明边缘 → 保持 RGB，设为完全不透明
+                        pixels[i] = (pixels[i] and 0x00FFFFFF) or 0xFF000000.toInt()
                     }
                 }
                 bmp.setPixels(pixels, 0, w, 0, 0, w, h)
@@ -340,15 +344,18 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             val vb = model.vertexBuffer ?: return
             val nb = model.normalBuffer ?: return
 
-            // 启用 2D 纹理（贴上 2D 图片，该白的地方白、该黑的地方黑）
+            // 启用 2D 纹理（GL_REPLACE：纹理颜色原样显示，不受光照影响）
+            // 这样 3D 模型表面颜色与 APP 内 2D 图片完全一致
             if (textureId != 0) {
                 gl.glEnable(GL10.GL_TEXTURE_2D)
                 gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
-                gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE.toFloat())
+                gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_REPLACE.toFloat())
                 gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
                 model.textureBuffer?.let { tb ->
                     gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, tb)
                 }
+                // 关闭光照，让纹理颜色 1:1 显示（白色就是纯白，黑色就是纯黑）
+                gl.glDisable(GL10.GL_LIGHTING)
             }
 
             gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
@@ -364,6 +371,8 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             if (textureId != 0) {
                 gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
                 gl.glDisable(GL10.GL_TEXTURE_2D)
+                // 恢复光照，供下一帧其他绘制使用
+                gl.glEnable(GL10.GL_LIGHTING)
             }
         }
 
