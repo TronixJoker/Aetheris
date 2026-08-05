@@ -2,7 +2,7 @@
 
 英文版本请查看 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-感谢你为 `py-xiaozhi` 做出贡献。我们欢迎 Bug 反馈、文档修复、测试补充、工具链改进，以及范围清晰的新功能。
+感谢你为 `Aetheris` 做出贡献。我们欢迎 Bug 反馈、文档修复、测试补充、工具链改进，以及范围清晰的新功能。
 
 ## 开始之前
 
@@ -21,8 +21,8 @@
 ### 安装依赖
 
 ```bash
-git clone https://github.com/huangjunsen0406/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/huangjunsen0406/Aetheris.git
+cd Aetheris
 
 # 基础安装
 uv sync
@@ -94,8 +94,8 @@ pytest
 
 ## 详细文档
 
-- 项目文档：<https://huangjunsen0406.github.io/py-xiaozhi/>
-- 详细贡献指南（英文）：<https://huangjunsen0406.github.io/py-xiaozhi/en/contributing>
-- 详细贡献指南（中文）：<https://huangjunsen0406.github.io/py-xiaozhi/contributing>
+- 项目文档：<https://huangjunsen0406.github.io/Aetheris/>
+- 详细贡献指南（英文）：<https://huangjunsen0406.github.io/Aetheris/en/contributing>
+- 详细贡献指南（中文）：<https://huangjunsen0406.github.io/Aetheris/contributing>
 
 再次感谢你的贡献。

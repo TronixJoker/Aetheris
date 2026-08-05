@@ -4,25 +4,25 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/releases/latest">
-    <img src="https://img.shields.io/github/v/release/huangjunsen0406/py-xiaozhi?style=flat-square&logo=github&color=blue" alt="Release"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/releases/latest">
+    <img src="https://img.shields.io/github/v/release/huangjunsen0406/Aetheris?style=flat-square&logo=github&color=blue" alt="Release"/>
   </a>
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT"/>
   </a>
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/stargazers">
-    <img src="https://img.shields.io/github/stars/huangjunsen0406/py-xiaozhi?style=flat-square&logo=github" alt="Stars"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/stargazers">
+    <img src="https://img.shields.io/github/stars/huangjunsen0406/Aetheris?style=flat-square&logo=github" alt="Stars"/>
   </a>
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/releases/latest">
-    <img src="https://img.shields.io/github/downloads/huangjunsen0406/py-xiaozhi/total?style=flat-square&logo=github&color=52c41a1&maxAge=86400" alt="Download"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/releases/latest">
+    <img src="https://img.shields.io/github/downloads/huangjunsen0406/Aetheris/total?style=flat-square&logo=github&color=52c41a1&maxAge=86400" alt="Download"/>
   </a>
-  <a href="https://gitee.com/huang-jun-sen/py-xiaozhi">
+  <a href="https://gitee.com/huang-jun-sen/Aetheris">
     <img src="https://img.shields.io/badge/Gitee-FF5722?style=flat-square&logo=gitee" alt="Gitee"/>
   </a>
-  <a href="https://huangjunsen0406.github.io/py-xiaozhi/guide/00_%E6%96%87%E6%A1%A3%E7%9B%AE%E5%BD%95.html">
+  <a href="https://huangjunsen0406.github.io/Aetheris/guide/00_%E6%96%87%E6%A1%A3%E7%9B%AE%E5%BD%95.html">
     <img alt="使用文档" src="https://img.shields.io/badge/使用文档-点击查看-blue?labelColor=2d2d2d" />
   </a>
-  <a href="https://atomgit.com/huangjunsen0406/py-xiaozhi">
+  <a href="https://atomgit.com/huangjunsen0406/Aetheris">
     <img src="./assets/AtomGit.svg" alt="AtomGit" height="20"/>
   </a>
 </p>
@@ -51,13 +51,13 @@
 
 ## 项目简介
 
-py-xiaozhi 是一个轻量级、跨平台的多模态 AI 交互主控框架，基于 Python 异步架构，支持实时语音、视觉识别和 IoT 设备控制。可部署于 Windows / macOS / Linux 桌面以及 Raspberry Pi、RDK 等 ARM 嵌入式平台，向下对接具身智能硬件，向上接入大语言模型，开箱即用。
+Aetheris 是一个轻量级、跨平台的多模态 AI 交互主控框架，基于 Python 异步架构，支持实时语音、视觉识别和 IoT 设备控制。可部署于 Windows / macOS / Linux 桌面以及 Raspberry Pi、RDK 等 ARM 嵌入式平台，向下对接具身智能硬件，向上接入大语言模型，开箱即用。
 
 > 本项目从 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 移植演进而来，已被 [D-Robotics 官方生态 (xiaozhi-in-rdk)](https://github.com/D-Robotics/xiaozhi-in-rdk) 深度适配。
 
 > **重要提示**
 >
-> - 请先阅读 [项目文档](https://huangjunsen0406.github.io/py-xiaozhi/)，启动教程和配置说明都在里面
+> - 请先阅读 [项目文档](https://huangjunsen0406.github.io/Aetheris/)，启动教程和配置说明都在里面
 > - main 是最新代码，每次更新后请重新安装 pip 依赖
 > - **如果你已经基于本项目进行了二次开发，请不要直接合并最新代码**，新版本架构已大幅重构，强行合并会导致大量冲突。建议以旧版本为基础继续维护，或参考新架构重新适配
 > - [从零开始使用小智客户端（视频教程）](https://www.bilibili.com/video/BV1dWQhYEEmq/)
@@ -93,8 +93,8 @@ py-xiaozhi 是一个轻量级、跨平台的多模态 AI 交互主控框架，�
 
 ```bash
 # 克隆项目
-git clone https://github.com/huangjunsen0406/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/huangjunsen0406/Aetheris.git
+cd Aetheris
 
 # 基础安装（CLI / GPIO 模式）
 uv sync                        # 推荐
@@ -113,7 +113,7 @@ python main.py --protocol mqtt # MQTT 协议
 ## 项目结构
 
 ```
-py-xiaozhi/
+Aetheris/
 ├── main.py                     # 应用程序主入口
 ├── src/
 │   ├── bootstrap/              # 应用引导与依赖注入
@@ -156,7 +156,7 @@ py-xiaozhi/
 
 - 仓库贡献入口请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 中文版本请查看 [CONTRIBUTING_ZH.md](./CONTRIBUTING_ZH.md)
-- 详细文档请查看 [贡献指南](https://huangjunsen0406.github.io/py-xiaozhi/contributing)
+- 详细文档请查看 [贡献指南](https://huangjunsen0406.github.io/Aetheris/contributing)
 
 ## Maintainer Workflow
 
@@ -184,7 +184,7 @@ py-xiaozhi/
 
 ## 项目统计
 
-[![Star History Chart](https://api.star-history.com/svg?repos=huangjunsen0406/py-xiaozhi&type=Date)](https://www.star-history.com/#huangjunsen0406/py-xiaozhi&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=huangjunsen0406/Aetheris&type=Date)](https://www.star-history.com/#huangjunsen0406/Aetheris&Date)
 
 ## 许可证
 

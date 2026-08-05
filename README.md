@@ -1,4 +1,4 @@
-# py-xiaozhi
+# Aetheris
 
 <p align="center" class="trendshift">
   <a href="https://trendshift.io/repositories/14130" target="_blank">
@@ -6,25 +6,25 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/releases/latest">
-    <img src="https://img.shields.io/github/v/release/huangjunsen0406/py-xiaozhi?style=flat-square&logo=github&color=blue" alt="Release"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/releases/latest">
+    <img src="https://img.shields.io/github/v/release/huangjunsen0406/Aetheris?style=flat-square&logo=github&color=blue" alt="Release"/>
   </a>
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT"/>
   </a>
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/stargazers">
-    <img src="https://img.shields.io/github/stars/huangjunsen0406/py-xiaozhi?style=flat-square&logo=github" alt="Stars"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/stargazers">
+    <img src="https://img.shields.io/github/stars/huangjunsen0406/Aetheris?style=flat-square&logo=github" alt="Stars"/>
   </a>
-  <a href="https://github.com/huangjunsen0406/py-xiaozhi/releases/latest">
-    <img src="https://img.shields.io/github/downloads/huangjunsen0406/py-xiaozhi/total?style=flat-square&logo=github&color=52c41a1&maxAge=86400" alt="Download"/>
+  <a href="https://github.com/huangjunsen0406/Aetheris/releases/latest">
+    <img src="https://img.shields.io/github/downloads/huangjunsen0406/Aetheris/total?style=flat-square&logo=github&color=52c41a1&maxAge=86400" alt="Download"/>
   </a>
-  <a href="https://gitee.com/huang-jun-sen/py-xiaozhi">
+  <a href="https://gitee.com/huang-jun-sen/Aetheris">
     <img src="https://img.shields.io/badge/Gitee-FF5722?style=flat-square&logo=gitee" alt="Gitee"/>
   </a>
-  <a href="https://huangjunsen0406.github.io/py-xiaozhi/guide/00_%E6%96%87%E6%A1%A3%E7%9B%AE%E5%BD%95.html">
+  <a href="https://huangjunsen0406.github.io/Aetheris/guide/00_%E6%96%87%E6%A1%A3%E7%9B%AE%E5%BD%95.html">
     <img alt="Usage Docs" src="https://img.shields.io/badge/Usage Docs-View-blue?labelColor=2d2d2d" />
   </a>
-  <a href="https://atomgit.com/huangjunsen0406/py-xiaozhi">
+  <a href="https://atomgit.com/huangjunsen0406/Aetheris">
     <img src="./assets/AtomGit.svg" alt="AtomGit" height="20"/>
   </a>
 </p>
@@ -53,7 +53,7 @@ Thanks to GitDo.net for sponsoring this project! GitDo.net is an AI API aggregat
 
 ## About
 
-py-xiaozhi is a lightweight, cross-platform multi-modal AI interaction framework built on Python's async architecture. It supports real-time voice streaming, vision-language tasks, and IoT device control. Deployable across Windows, macOS, Linux desktops, and ARM embedded platforms (Raspberry Pi, Horizon Robotics RDK, Jetson Nano), it bridges the gap between Large Language Models and physical hardware — out of the box.
+Aetheris is a lightweight, cross-platform multi-modal AI interaction framework built on Python's async architecture. It supports real-time voice streaming, vision-language tasks, and IoT device control. Deployable across Windows, macOS, Linux desktops, and ARM embedded platforms (Raspberry Pi, Horizon Robotics RDK, Jetson Nano), it bridges the gap between Large Language Models and physical hardware — out of the box.
 
 > Evolved from the [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) firmware project. Officially adopted by [D-Robotics (xiaozhi-in-rdk)](https://github.com/D-Robotics/xiaozhi-in-rdk) as an upstream dependency.
 
@@ -102,7 +102,7 @@ py-xiaozhi is a lightweight, cross-platform multi-modal AI interaction framework
 
 ## Read This First
 
-- Carefully read [项目文档](https://huangjunsen0406.github.io/py-xiaozhi/) for startup tutorials and file descriptions
+- Carefully read [项目文档](https://huangjunsen0406.github.io/Aetheris/) for startup tutorials and file descriptions
 - The main branch has the latest code; manually reinstall pip dependencies after each update to ensure you have new dependencies
 
 [Zero to Xiaozhi Client (Video Tutorial)](https://www.bilibili.com/video/BV1dWQhYEEmq/?vd_source=2065ec11f7577e7107a55bbdc3d12fce)
@@ -142,7 +142,7 @@ py-xiaozhi is a lightweight, cross-platform multi-modal AI interaction framework
 ### Project Structure
 
 ```
-py-xiaozhi/
+Aetheris/
 ├── main.py                     # Application entry point
 ├── src/
 │   ├── activation/             # Device activation
@@ -177,8 +177,8 @@ py-xiaozhi/
 
 ```bash
 # Clone project
-git clone https://github.com/huangjunsen0406/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/huangjunsen0406/Aetheris.git
+cd Aetheris
 
 # Base install (CLI / GPIO mode)
 uv sync                                    # Recommended (uv users)
@@ -239,7 +239,7 @@ python main.py --protocol mqtt       # MQTT protocol
 
 - Start with [CONTRIBUTING.md](./CONTRIBUTING.md) for the repository workflow
 - Chinese version: [CONTRIBUTING_ZH.md](./CONTRIBUTING_ZH.md)
-- Detailed docs: [Contribution Guide](https://huangjunsen0406.github.io/py-xiaozhi/en/contributing)
+- Detailed docs: [Contribution Guide](https://huangjunsen0406.github.io/Aetheris/en/contributing)
 
 ## Maintainer Workflow
 
@@ -269,7 +269,7 @@ python main.py --protocol mqtt       # MQTT protocol
 
 ## Project Statistics
 
-[![Star History Chart](https://api.star-history.com/svg?repos=huangjunsen0406/py-xiaozhi&type=Date)](https://www.star-history.com/#huangjunsen0406/py-xiaozhi&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=huangjunsen0406/Aetheris&type=Date)](https://www.star-history.com/#huangjunsen0406/Aetheris&Date)
 
 ## License
 

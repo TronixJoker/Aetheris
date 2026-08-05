@@ -4,8 +4,8 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "PY-XIAOZHI",
   description:
-    "py-xiaozhi is a Python-based Xiaozhi voice client for learning and experiencing AI voice features without hardware.",
-  base: "/py-xiaozhi/",
+    "Aetheris is a Python-based Xiaozhi voice client for learning and experiencing AI voice features without hardware.",
+  base: "/Aetheris/",
   locales: {
     root: {
       label: "English",
@@ -62,7 +62,7 @@ export default defineConfig({
         socialLinks: [
           {
             icon: "github",
-            link: "https://github.com/huangjunsen0406/py-xiaozhi",
+            link: "https://github.com/huangjunsen0406/Aetheris",
           },
         ],
       },
@@ -121,7 +121,7 @@ export default defineConfig({
         socialLinks: [
           {
             icon: "github",
-            link: "https://github.com/huangjunsen0406/py-xiaozhi",
+            link: "https://github.com/huangjunsen0406/Aetheris",
           },
         ],
       },

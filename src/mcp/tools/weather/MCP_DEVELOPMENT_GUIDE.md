@@ -140,7 +140,7 @@ def get_forecast(args: Dict[str, Any]) -> str:
 
 | 工具 | 文件 | 说明 |
 |------|------|------|
-| 截图 | [screenshot/](file:///Users/junsen/Desktop/workspace/py-xiaozhi/src/mcp/tools/screenshot) | 简洁示例 |
-| 天气 | [weather/](file:///Users/junsen/Desktop/workspace/py-xiaozhi/src/mcp/tools/weather) | 装饰器示例 |
-| 音乐 | [music/](file:///Users/junsen/Desktop/workspace/py-xiaozhi/src/mcp/tools/music) | 带管理器 |
-| 系统 | [system/](file:///Users/junsen/Desktop/workspace/py-xiaozhi/src/mcp/tools/system) | 多工具示例 |
+| 截图 | [screenshot/](file:///Users/junsen/Desktop/workspace/Aetheris/src/mcp/tools/screenshot) | 简洁示例 |
+| 天气 | [weather/](file:///Users/junsen/Desktop/workspace/Aetheris/src/mcp/tools/weather) | 装饰器示例 |
+| 音乐 | [music/](file:///Users/junsen/Desktop/workspace/Aetheris/src/mcp/tools/music) | 带管理器 |
+| 系统 | [system/](file:///Users/junsen/Desktop/workspace/Aetheris/src/mcp/tools/system) | 多工具示例 |

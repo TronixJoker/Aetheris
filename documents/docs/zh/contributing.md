@@ -1,6 +1,6 @@
 ---
 title: 贡献指南
-description: 如何为 py-xiaozhi 项目贡献代码
+description: 如何为 Aetheris 项目贡献代码
 sidebar: false
 outline: deep
 ---
@@ -10,12 +10,12 @@ outline: deep
 # 贡献指南
 
 <div class="header-content">
-  <h2>如何为 py-xiaozhi 项目贡献代码 🚀</h2>
+  <h2>如何为 Aetheris 项目贡献代码 🚀</h2>
 </div>
 
 ## 前言
 
-感谢您对 py-xiaozhi 项目感兴趣！我们非常欢迎社区成员参与贡献，无论是修复错误、改进文档还是添加新功能。本指南将帮助您了解如何向项目提交贡献。
+感谢您对 Aetheris 项目感兴趣！我们非常欢迎社区成员参与贡献，无论是修复错误、改进文档还是添加新功能。本指南将帮助您了解如何向项目提交贡献。
 
 ## 开发环境准备
 
@@ -28,21 +28,21 @@ outline: deep
 ### 获取源代码
 
 1. 首先，在 GitHub 上 Fork 本项目到您自己的账号
-   - 访问 [py-xiaozhi 项目页面](https://github.com/huangjunsen0406/py-xiaozhi)
+   - 访问 [Aetheris 项目页面](https://github.com/huangjunsen0406/Aetheris)
    - 点击右上角的"Fork"按钮
    - 等待 Fork 完成，您将被重定向到您的仓库副本
 
 2. 克隆您 fork 的仓库到本地：
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/YOUR_USERNAME/Aetheris.git
+cd Aetheris
 ```
 
 3. 添加上游仓库作为远程源：
 
 ```bash
-git remote add upstream https://github.com/huangjunsen0406/py-xiaozhi.git
+git remote add upstream https://github.com/huangjunsen0406/Aetheris.git
 ```
 
 你可以使用 `git remote -v` 命令确认远程仓库已正确配置：
@@ -50,10 +50,10 @@ git remote add upstream https://github.com/huangjunsen0406/py-xiaozhi.git
 ```bash
 git remote -v
 # 应显示：
-# origin    https://github.com/YOUR_USERNAME/py-xiaozhi.git (fetch)
-# origin    https://github.com/YOUR_USERNAME/py-xiaozhi.git (push)
-# upstream  https://github.com/huangjunsen0406/py-xiaozhi.git (fetch)
-# upstream  https://github.com/huangjunsen0406/py-xiaozhi.git (push)
+# origin    https://github.com/YOUR_USERNAME/Aetheris.git (fetch)
+# origin    https://github.com/YOUR_USERNAME/Aetheris.git (push)
+# upstream  https://github.com/huangjunsen0406/Aetheris.git (fetch)
+# upstream  https://github.com/huangjunsen0406/Aetheris.git (push)
 ```
 
 ### 安装开发依赖
@@ -317,7 +317,7 @@ pnpm install
 pnpm docs:dev
 ```
 
-5. 在浏览器中访问 `http://localhost:5173/py-xiaozhi/` 预览您的更改
+5. 在浏览器中访问 `http://localhost:5173/Aetheris/` 预览您的更改
 
 6. 完成更改后，提交您的贡献并创建 Pull Request
 
@@ -332,7 +332,7 @@ pnpm docs:dev
 
 ## 问题反馈
 
-如果您发现了问题但暂时无法修复，请在 GitHub 上[创建 Issue](https://github.com/huangjunsen0406/py-xiaozhi/issues/new)。创建 Issue 时，请包含以下信息：
+如果您发现了问题但暂时无法修复，请在 GitHub 上[创建 Issue](https://github.com/huangjunsen0406/Aetheris/issues/new)。创建 Issue 时，请包含以下信息：
 
 - 问题的详细描述
 - 重现问题的步骤
@@ -402,7 +402,7 @@ pnpm docs:dev
 
 ## 致谢
 
-再次感谢您为项目做出贡献！您的参与对我们非常重要，共同努力让 py-xiaozhi 变得更好！
+再次感谢您为项目做出贡献！您的参与对我们非常重要，共同努力让 Aetheris 变得更好！
 
 </div>
 

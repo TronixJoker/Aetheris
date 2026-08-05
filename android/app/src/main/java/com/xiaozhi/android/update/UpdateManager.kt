@@ -26,15 +26,15 @@ class UpdateManager(private val context: Context) {
         private const val TAG = "UpdateManager"
         // raw.githubusercontent.com 没有 CDN 缓存，是最可靠的源（虽然国内可能慢，但一定是最新的）
         private const val UPDATE_INFO_URL =
-            "https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json"
+            "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json"
         // 备用源：GitHub API（无缓存，可能限流）+ 国内镜像（快，可能有短暂缓存）+ jsDelivr（CDN缓存，最后备用）
         private val UPDATE_INFO_FALLBACK_URLS = listOf(
-            "https://api.github.com/repos/TronixJoker/py-xiaozhi/contents/android-update.json?ref=main",
+            "https://api.github.com/repos/TronixJoker/Aetheris/contents/android-update.json?ref=main",
             // 国内 GitHub 代理镜像（直接拼接 raw URL，国内访问快）
-            "https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
-            "https://ghproxy.net/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
-            "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/py-xiaozhi/main/android-update.json",
-            "https://cdn.jsdelivr.net/gh/TronixJoker/py-xiaozhi@main/android-update.json"
+            "https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
+            "https://ghproxy.net/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
+            "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
+            "https://cdn.jsdelivr.net/gh/TronixJoker/Aetheris@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
         private const val DOWNLOAD_STALL_TIMEOUT_MS = 30_000L

@@ -12,13 +12,13 @@ Homebrew, apt, and Chocolatey FFmpeg packages are **dynamically linked** against
 - Linux apt: depends on distro `.so` versions; may pull a large transitive set and break on other distros/versions.
 - Windows Chocolatey: often ships real binaries under `tools/ffmpeg/bin`, but CI currently can still fall back to a shim; dependency set is not guaranteed portable.
 
-`cp $(which ffmpeg)` into `libs/ffmpeg/...` therefore works on the builder and fails on clean user machines. py-xiaozhi already resolves bundled binaries first:
+`cp $(which ffmpeg)` into `libs/ffmpeg/...` therefore works on the builder and fails on clean user machines. Aetheris already resolves bundled binaries first:
 
 - Path layout: `libs/ffmpeg/<plat>/<arch>/ffmpeg[.exe]` and `ffprobe[.exe]`
   - plat: `mac` | `win` | `linux`
   - arch: `arm64` | `x64`
 - Code: `src/utils/resource_finder.py` → `get_ffmpeg_path()` / `get_ffprobe_path()` prefer `get_app_root() / "libs" / "ffmpeg" / ...`, then PATH.
-- PyInstaller: `py-xiaozhi.spec` already includes `('libs', 'libs')` under `datas`.
+- PyInstaller: `Aetheris.spec` already includes `('libs', 'libs')` under `datas`.
 
 Need **redistributable** (static or self-contained shared) builds downloaded per platform in CI / local pack scripts.
 
@@ -32,7 +32,7 @@ Need **redistributable** (static or self-contained shared) builds downloaded per
 | `src/audio_codecs/music_decoder.py` | Primary consumer; Windows `CREATE_NO_WINDOW` |
 | `src/utils/activation_announcer.py` | Currently also spawns ffmpeg (PRD: move to WAV) |
 | `.github/workflows/build.yml` | Current Bundle FFmpeg step: brew/apt/choco + `cp` |
-| `py-xiaozhi.spec` | `datas` includes `('libs', 'libs')` |
+| `Aetheris.spec` | `datas` includes `('libs', 'libs')` |
 | `LICENSE` / `pyproject.toml` | MIT |
 
 ### Options compared
@@ -62,7 +62,7 @@ Need **redistributable** (static or self-contained shared) builds downloaded per
 - **URL**: https://evermeet.cx/ffmpeg/
 - **Platforms**: historically **macOS x86_64** static-ish single binaries (`ffmpeg`, `ffprobe`).
 - **arm64**: not a reliable primary source for Apple Silicon; do not assume arm64 coverage.
-- **Notes**: Fine for Intel Mac historical packaging; **not sufficient alone** for current py-xiaozhi CI which targets mac arm64.
+- **Notes**: Fine for Intel Mac historical packaging; **not sufficient alone** for current Aetheris CI which targets mac arm64.
 
 #### 4. osxexperts.net / other mac arm64 builds
 
@@ -203,7 +203,7 @@ CI should fail the job if `-version` exits non-zero under isolated PATH.
 
 ## License
 
-- **py-xiaozhi** is **MIT** (`LICENSE`, `pyproject.toml`).
+- **Aetheris** is **MIT** (`LICENSE`, `pyproject.toml`).
 - FFmpeg itself: core under LGPL; many builds enable GPL components (libx264, etc.) → whole binary often treated as **GPL** when those are linked.
 - **BtbN** publishes both **`lgpl`** and **`gpl`** asset variants — prefer **lgpl** for MIT app redistribution when codec set is sufficient for music decode (PCM output from common formats).
 - Bundling **GPL** ffmpeg into a distributed app has implications (source offer / GPL obligations for the combined work depending on linking and distribution model). Document choice in release notes / third-party notices if GPL builds are used.

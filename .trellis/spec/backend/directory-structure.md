@@ -7,7 +7,7 @@
 ## 顶层布局
 
 ```
-py-xiaozhi/
+Aetheris/
 ├── main.py                # 入口,解析 --mode/--protocol,初始化日志,启动 ServiceContainer
 ├── pyproject.toml         # 依赖 + ruff/black/isort/pytest 配置
 ├── requirements.txt

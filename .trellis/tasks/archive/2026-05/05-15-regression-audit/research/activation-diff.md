@@ -170,7 +170,7 @@ This would have a non-empty message. But if the network request fails with a sys
 #### Hypothesis D: Config Migration Failure (LIKELY for fresh installs)
 
 The old code stored `config.json` and `efuse.json` in the bundled `config/` directory (which was writable at `_MEIPASS` or exe directory level). The new code:
-1. Looks for config at `get_user_data_dir() / "config"` (e.g., `C:/Users/xxx/AppData/Local/py-xiaozhi/config/`)
+1. Looks for config at `get_user_data_dir() / "config"` (e.g., `C:/Users/xxx/AppData/Local/Aetheris/config/`)
 2. If not found, tries to migrate from `get_config_dir()` which is `get_app_root() / "config"` = `_MEIPASS/config/`
 
 But `build.json` `add_data` does NOT include `"config:config"`. The bundled data is:

@@ -1,6 +1,6 @@
 ---
 title: Contributing
-description: How to contribute to py-xiaozhi
+description: How to contribute to Aetheris
 sidebar: false
 outline: deep
 ---
@@ -9,7 +9,7 @@ outline: deep
 
 Chinese version: [简体中文](/contributing)
 
-Thank you for contributing to `py-xiaozhi`. This guide explains how we expect issues, pull requests, review cycles, and maintainer handoff to work.
+Thank you for contributing to `Aetheris`. This guide explains how we expect issues, pull requests, review cycles, and maintainer handoff to work.
 
 ## What We Welcome
 
@@ -34,8 +34,8 @@ For large feature requests, architectural changes, or behavior changes, please o
 ### Clone and Install
 
 ```bash
-git clone https://github.com/huangjunsen0406/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/huangjunsen0406/Aetheris.git
+cd Aetheris
 
 # Base install
 uv sync
@@ -175,6 +175,6 @@ For docs-only contributions:
 
 ## Related Entry Points
 
-- Repository workflow: [CONTRIBUTING.md](https://github.com/huangjunsen0406/py-xiaozhi/blob/main/CONTRIBUTING.md)
-- Chinese repository workflow: [CONTRIBUTING_ZH.md](https://github.com/huangjunsen0406/py-xiaozhi/blob/main/CONTRIBUTING_ZH.md)
-- Project documentation: <https://huangjunsen0406.github.io/py-xiaozhi/>
+- Repository workflow: [CONTRIBUTING.md](https://github.com/huangjunsen0406/Aetheris/blob/main/CONTRIBUTING.md)
+- Chinese repository workflow: [CONTRIBUTING_ZH.md](https://github.com/huangjunsen0406/Aetheris/blob/main/CONTRIBUTING_ZH.md)
+- Project documentation: <https://huangjunsen0406.github.io/Aetheris/>

@@ -1,8 +1,8 @@
-# Contributing to py-xiaozhi
+# Contributing to Aetheris
 
 Looking for the Chinese version? See [CONTRIBUTING_ZH.md](./CONTRIBUTING_ZH.md).
 
-Thank you for helping improve `py-xiaozhi`. We welcome bug reports, documentation fixes, tests, tooling improvements, and well-scoped features.
+Thank you for helping improve `Aetheris`. We welcome bug reports, documentation fixes, tests, tooling improvements, and well-scoped features.
 
 ## Before You Start
 
@@ -21,8 +21,8 @@ Thank you for helping improve `py-xiaozhi`. We welcome bug reports, documentatio
 ### Install Dependencies
 
 ```bash
-git clone https://github.com/huangjunsen0406/py-xiaozhi.git
-cd py-xiaozhi
+git clone https://github.com/huangjunsen0406/Aetheris.git
+cd Aetheris
 
 # Base install
 uv sync
@@ -94,8 +94,8 @@ Maintainers generally review contributions using the following workflow:
 
 ## Detailed Guides
 
-- Documentation site: <https://huangjunsen0406.github.io/py-xiaozhi/>
-- Detailed contribution guide: <https://huangjunsen0406.github.io/py-xiaozhi/en/contributing>
-- Chinese contribution guide: <https://huangjunsen0406.github.io/py-xiaozhi/contributing>
+- Documentation site: <https://huangjunsen0406.github.io/Aetheris/>
+- Detailed contribution guide: <https://huangjunsen0406.github.io/Aetheris/en/contributing>
+- Chinese contribution guide: <https://huangjunsen0406.github.io/Aetheris/contributing>
 
 Thanks again for contributing.

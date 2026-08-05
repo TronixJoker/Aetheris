@@ -1,14 +1,14 @@
 [
   {
     "name": "Junsen Huang",
-    "title": "py-xiaozhi发起者 & 核心开发者",
+    "title": "Aetheris发起者 & 核心开发者",
     "company": "南方电网人工智能有限公司 前端开发工程师",
     "location": "中国",
     "languages": ["中文"],
     "projects": [
       {
-        "label": "py-xiaozhi",
-        "url": "https://github.com/huangjunsen0406/py-xiaozhi"
+        "label": "Aetheris",
+        "url": "https://github.com/huangjunsen0406/Aetheris"
       },
       {
         "label": "UnifyPy",

@@ -1,6 +1,6 @@
 # Research: PyInstaller FFmpeg bundling
 
-- **Query**: How py-xiaozhi packs and resolves bundled ffmpeg/ffprobe under PyInstaller onedir
+- **Query**: How Aetheris packs and resolves bundled ffmpeg/ffprobe under PyInstaller onedir
 - **Scope**: internal (project pack paths + subprocess notes)
 - **Date**: 2026-07-18
 
@@ -8,7 +8,7 @@
 
 ### Datas already include `libs`
 
-`py-xiaozhi.spec` Analysis:
+`Aetheris.spec` Analysis:
 
 ```python
 datas=[('models', 'models'), ('scripts', 'scripts'), ('src', 'src'), ('libs', 'libs'), ('assets', 'assets')],
@@ -73,7 +73,7 @@ Outer app signing/notarization of nested ffmpeg is out of scope for this task; s
 
 ### UPX note
 
-`py-xiaozhi.spec` has `upx=True` on EXE/COLLECT. UPX on already-packed static ffmpeg is unnecessary and can break some binaries. Prefer excluding `libs/ffmpeg/**` from UPX if pack step compresses collected files (or inject after UPX-sensitive steps). Verify with isolated `-version` after the full package build.
+`Aetheris.spec` has `upx=True` on EXE/COLLECT. UPX on already-packed static ffmpeg is unnecessary and can break some binaries. Prefer excluding `libs/ffmpeg/**` from UPX if pack step compresses collected files (or inject after UPX-sensitive steps). Verify with isolated `-version` after the full package build.
 
 ### Smoke after pack
 
@@ -90,7 +90,7 @@ App-level: run music decode path and confirm `get_ffmpeg_path()` returns the bun
 
 | File | Role |
 |---|---|
-| `py-xiaozhi.spec` | `datas` includes `libs` |
+| `Aetheris.spec` | `datas` includes `libs` |
 | `src/utils/resource_finder.py` | `_MEIPASS` + bundled path resolution |
 | `src/audio_codecs/music_decoder.py` | ffmpeg/ffprobe subprocess + `CREATE_NO_WINDOW` |
 | `src/utils/activation_announcer.py` | ffmpeg decode (PRD: replace with WAV) |

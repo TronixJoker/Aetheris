@@ -11,7 +11,7 @@ hero:
       link: /guide/文档目录
     - theme: alt
       text: View Source
-      link: https://github.com/huangjunsen0406/py-xiaozhi
+      link: https://github.com/huangjunsen0406/Aetheris
     - theme: alt
       text: Dev Guide
       link: /guide/开发指南

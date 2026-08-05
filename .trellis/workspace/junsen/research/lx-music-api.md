@@ -159,7 +159,7 @@ Returns plain text LRC format:
 
 ## 3. Comparison: LX Music API Server vs TuneFree API
 
-### 3.1 Current TuneFree API Usage in py-xiaozhi
+### 3.1 Current TuneFree API Usage in Aetheris
 
 The current codebase uses TuneFree API at `https://music-dl.sayqz.com/api/` (see `music_player.py:127`).
 
@@ -209,7 +209,7 @@ Because the API formats are compatible, switching from TuneFree to a self-hosted
 | `migu` | Migu Music (咪咕音乐) | China Mobile's platform, good FLAC support |
 | `bilibili` | Bilibili (哔哩哔哩) | Some forks support B站 audio |
 
-**Note**: The current py-xiaozhi codebase defaults to `kuwo` (see `music_player.py:128`). Available sources depend on which "scripts" (source modules) are installed in the lx-music-api-server.
+**Note**: The current Aetheris codebase defaults to `kuwo` (see `music_player.py:128`). Available sources depend on which "scripts" (source modules) are installed in the lx-music-api-server.
 
 ## 5. Deployment / Self-Hosting
 

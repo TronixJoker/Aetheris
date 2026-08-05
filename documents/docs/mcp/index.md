@@ -1,6 +1,6 @@
 # MCP Tool Development Guide
 
-This document explains how to develop built-in MCP tools for py-xiaozhi. For external MCP service integration, refer to the [External MCP Integration Guide](xiaozhi-mcp.md).
+This document explains how to develop built-in MCP tools for Aetheris. For external MCP service integration, refer to the [External MCP Integration Guide](xiaozhi-mcp.md).
 
 ## How It Works
 

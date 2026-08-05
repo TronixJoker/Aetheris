@@ -1,12 +1,12 @@
 ---
 title: Ecosystem
-description: Ecosystem projects related to py-xiaozhi
+description: Ecosystem projects related to Aetheris
 outline: deep
 ---
 
 # Ecosystem
 
-A collection of ecosystem projects related to py-xiaozhi.
+A collection of ecosystem projects related to Aetheris.
 
 ## Ecosystem Projects
 

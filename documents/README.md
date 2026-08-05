@@ -1,6 +1,6 @@
-# py-xiaozhi 文档
+# Aetheris 文档
 
-这是 py-xiaozhi 项目的文档网站，基于 VitePress 构建。
+这是 Aetheris 项目的文档网站，基于 VitePress 构建。
 
 ## 功能
 

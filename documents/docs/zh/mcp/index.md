@@ -1,6 +1,6 @@
 # MCP 工具开发指南
 
-本文档说明如何为 py-xiaozhi 开发内置 MCP 工具。外部 MCP 服务接入请参考 [外挂 MCP 接入指南](xiaozhi-mcp.md)。
+本文档说明如何为 Aetheris 开发内置 MCP 工具。外部 MCP 服务接入请参考 [外挂 MCP 接入指南](xiaozhi-mcp.md)。
 
 ## 工作原理
 
