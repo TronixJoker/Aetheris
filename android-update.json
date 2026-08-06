@@ -1,1 +1,1 @@
-{"versionCode": 78, "versionName": "1.9.4", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.4.apk", "changelog": "修复桌面宠物3D模型颜色与2D图片不一致：改用GL_REPLACE直接显示纹理颜色，关闭光照影响，白色=纯白、黑色=纯黑，和APP内2D图片完全一致；修复半透明边缘像素灰边问题"}
+{"versionCode": 79, "versionName": "1.9.5", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.5.apk", "changelog": "3D桌面宠物纹理全覆盖：改用Box Mapping根据面法线自动选择最佳投影方向，侧面和顶面不再纯白；每个面都有完整纹理颜色"}
