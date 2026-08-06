@@ -85,64 +85,82 @@ class ObjModel {
             reader.close()
             inputStream.close()
 
-            // 计算顶点 X/Y 边界（用于平面投影 UV）
+            // 计算顶点 X/Y/Z 边界（用于 box mapping UV）
             var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
             var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            var minZ = Float.MAX_VALUE; var maxZ = -Float.MAX_VALUE
             for (i in tempVertices.indices step 3) {
                 val x = tempVertices[i]
                 val y = tempVertices[i + 1]
+                val z = tempVertices[i + 2]
                 if (x < minX) minX = x
                 if (x > maxX) maxX = x
                 if (y < minY) minY = y
                 if (y > maxY) maxY = y
+                if (z < minZ) minZ = z
+                if (z > maxZ) maxZ = z
             }
             val rangeX = (maxX - minX).coerceAtLeast(0.001f)
             val rangeY = (maxY - minY).coerceAtLeast(0.001f)
+            val rangeZ = (maxZ - minZ).coerceAtLeast(0.001f)
 
-            // 构建展开后的顶点数组（每个面 3 个顶点 × 3 浮点）+ UV 坐标
+            // 构建展开后的顶点数组（每个面 3 个顶点 × 3 浮点）+ UV 坐标 + 法线
+            // Box mapping：根据面法线选择最佳投影方向，确保每个面都有纹理
             vertexCount = tempFaces.size * 3
             vertices = FloatArray(vertexCount * 3)
             textureCoords = FloatArray(vertexCount * 2)
+            normals = FloatArray(vertexCount * 3)
             var idx = 0
             var uvi = 0
+            var ni = 0
             for (face in tempFaces) {
+                // 先取三个顶点坐标
+                val i0 = face[0] * 3; val i1 = face[1] * 3; val i2 = face[2] * 3
+                val ax = tempVertices[i0]; val ay = tempVertices[i0 + 1]; val az = tempVertices[i0 + 2]
+                val bx = tempVertices[i1]; val by = tempVertices[i1 + 1]; val bz = tempVertices[i1 + 2]
+                val cx = tempVertices[i2]; val cy = tempVertices[i2 + 1]; val cz = tempVertices[i2 + 2]
+
+                // 计算面法线（叉积）
+                val e1x = bx - ax; val e1y = by - ay; val e1z = bz - az
+                val e2x = cx - ax; val e2y = cy - ay; val e2z = cz - az
+                var nx = e1y * e2z - e1z * e2y
+                var ny = e1z * e2x - e1x * e2z
+                var nz = e1x * e2y - e1y * e2x
+                val nlen = Math.sqrt((nx * nx + ny * ny + nz * nz).toDouble()).toFloat()
+                if (nlen > 0) { nx /= nlen; ny /= nlen; nz /= nlen }
+
+                // 选择主导轴：法线分量绝对值最大的轴决定投影方向
+                val absNx = Math.abs(nx)
+                val absNy = Math.abs(ny)
+                val absNz = Math.abs(nz)
+
                 for (vi in 0 until 3) {
                     val srcIdx = face[vi] * 3
                     val x = tempVertices[srcIdx]
                     val y = tempVertices[srcIdx + 1]
+                    val z = tempVertices[srcIdx + 2]
                     vertices[idx++] = x
                     vertices[idx++] = y
-                    vertices[idx++] = tempVertices[srcIdx + 2]
-                    // 平面投影 UV：X→U，Y→V（V 翻转，因图片 Y 轴向下）
-                    textureCoords[uvi++] = (x - minX) / rangeX
-                    textureCoords[uvi++] = 1f - (y - minY) / rangeY
-                }
-            }
+                    vertices[idx++] = z
 
-            // 计算法线（每顶点法线，用于光照）
-            normals = FloatArray(vertexCount * 3)
-            for (i in tempFaces.indices) {
-                val base = i * 9
-                val v0 = floatArrayOf(vertices[base], vertices[base + 1], vertices[base + 2])
-                val v1 = floatArrayOf(vertices[base + 3], vertices[base + 4], vertices[base + 5])
-                val v2 = floatArrayOf(vertices[base + 6], vertices[base + 7], vertices[base + 8])
-                // 边向量
-                val e1 = floatArrayOf(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2])
-                val e2 = floatArrayOf(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2])
-                // 叉积
-                val nx = e1[1] * e2[2] - e1[2] * e2[1]
-                val ny = e1[2] * e2[0] - e1[0] * e2[2]
-                val nz = e1[0] * e2[1] - e1[1] * e2[0]
-                // 归一化
-                val len = Math.sqrt((nx * nx + ny * ny + nz * nz).toDouble()).toFloat()
-                val fnx = if (len > 0) nx / len else 0f
-                val fny = if (len > 0) ny / len else 0f
-                val fnz = if (len > 0) nz / len else 0f
-                // 同一面三个顶点共享法线（flat shading）
-                for (j in 0 until 3) {
-                    normals[base + j * 3] = fnx
-                    normals[base + j * 3 + 1] = fny
-                    normals[base + j * 3 + 2] = fnz
+                    normals[ni++] = nx
+                    normals[ni++] = ny
+                    normals[ni++] = nz
+
+                    // Box mapping：根据主导轴选择 UV 投影平面
+                    if (absNz >= absNx && absNz >= absNy) {
+                        // 前后面：XY 平面投影（原图正面）
+                        textureCoords[uvi++] = (x - minX) / rangeX
+                        textureCoords[uvi++] = 1f - (y - minY) / rangeY
+                    } else if (absNx >= absNy) {
+                        // 侧面：ZY 平面投影
+                        textureCoords[uvi++] = (z - minZ) / rangeZ
+                        textureCoords[uvi++] = 1f - (y - minY) / rangeY
+                    } else {
+                        // 顶底面：XZ 平面投影
+                        textureCoords[uvi++] = (x - minX) / rangeX
+                        textureCoords[uvi++] = 1f - (z - minZ) / rangeZ
+                    }
                 }
             }
 
