@@ -2,10 +2,9 @@ package com.xiaozhi.android.pet
 
 import android.content.Context
 import android.opengl.GLSurfaceView
-import android.opengl.GLUtils
-import android.graphics.BitmapFactory
 import android.util.Log
-import java.io.InputStream
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -13,142 +12,304 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * 二进制模型加载器：从 assets 读取 .bin 文件（GLB 简化转换而来）。
- * 格式: vertexCount(4) + [pos(3)+normal(3)+uv(2)]×vertexCount
- * 非索引渲染，直接 glDrawArrays。
+ * OBJ 模型加载器：从 assets 读取 .obj 文件，解析顶点和面。
+ * 仅支持三角形面，忽略材质、法线、纹理坐标（自动计算法线）。
  */
-class PetModel {
+class ObjModel {
 
+    var vertices: FloatArray = FloatArray(0)
+        private set
+    var normals: FloatArray = FloatArray(0)
+        private set
+    var textureCoords: FloatArray = FloatArray(0)
+        private set
     var vertexCount: Int = 0
         private set
 
+    /** 顶点缓冲（位置） */
     var vertexBuffer: FloatBuffer? = null
         private set
+    /** 法线缓冲 */
     var normalBuffer: FloatBuffer? = null
         private set
+    /** 纹理坐标缓冲（平面投影 UV） */
     var textureBuffer: FloatBuffer? = null
         private set
 
+    /**
+     * 从 assets 加载 OBJ 文件。
+     * @return true 加载成功
+     */
     fun loadFromAssets(context: Context, fileName: String): Boolean {
         try {
-            val input = context.assets.open(fileName)
-            val allBytes = input.readBytes()
-            input.close()
+            val inputStream = context.assets.open(fileName)
+            val reader = BufferedReader(InputStreamReader(inputStream))
 
-            val buf = ByteBuffer.wrap(allBytes)
-            buf.order(ByteOrder.nativeOrder())
-            vertexCount = buf.int
+            val tempVertices = ArrayList<Float>()
+            val tempFaces = ArrayList<IntArray>()
 
-            // 每顶点 8 个 float: pos(3) + normal(3) + uv(2)
-            val data = FloatArray(vertexCount * 8)
-            buf.asFloatBuffer().get(data)
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                val ln = line!!.trim()
+                if (ln.isEmpty() || ln.startsWith("#")) continue
+                val parts = ln.split("\\s+".toRegex())
+                when (parts[0]) {
+                    "v" -> {
+                        // 顶点 x y z
+                        if (parts.size >= 4) {
+                            tempVertices.add(parts[1].toFloat())
+                            tempVertices.add(parts[2].toFloat())
+                            tempVertices.add(parts[3].toFloat())
+                        }
+                    }
+                    "f" -> {
+                        // 面，可能格式：f v1 v2 v3 或 f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3
+                        // OBJ 索引从 1 开始，负数表示相对当前顶点数
+                        val face = IntArray(parts.size - 1)
+                        for (i in 1 until parts.size) {
+                            val idx = parts[i].split("/")[0]
+                            var v = idx.toIntOrNull() ?: 0
+                            if (v < 0) v = tempVertices.size / 3 + v + 1
+                            face[i - 1] = v - 1
+                        }
+                        // 三角化（fan）
+                        if (face.size >= 3) {
+                            for (i in 1 until face.size - 1) {
+                                tempFaces.add(intArrayOf(face[0], face[i], face[i + 1]))
+                            }
+                        }
+                    }
+                    else -> { /* 忽略 vt/vn/mtllib 等 */ }
+                }
+            }
+            reader.close()
+            inputStream.close()
 
-            // 拆分为三个独立缓冲
-            val verts = FloatArray(vertexCount * 3)
-            val norms = FloatArray(vertexCount * 3)
-            val uvs = FloatArray(vertexCount * 2)
-            for (i in 0 until vertexCount) {
-                val src = i * 8
-                val dst = i * 3
-                verts[dst]     = data[src]
-                verts[dst + 1] = data[src + 1]
-                verts[dst + 2] = data[src + 2]
-                norms[dst]     = data[src + 3]
-                norms[dst + 1] = data[src + 4]
-                norms[dst + 2] = data[src + 5]
-                uvs[i * 2]     = data[src + 6]
-                uvs[i * 2 + 1] = data[src + 7]
+            // 计算模型中心和边界
+            var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
+            var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            var minZ = Float.MAX_VALUE; var maxZ = -Float.MAX_VALUE
+            for (i in tempVertices.indices step 3) {
+                val x = tempVertices[i]; val y = tempVertices[i + 1]; val z = tempVertices[i + 2]
+                if (x < minX) minX = x; if (x > maxX) maxX = x
+                if (y < minY) minY = y; if (y > maxY) maxY = y
+                if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+            }
+            val cx = (minX + maxX) / 2f
+            val cy = (minY + maxY) / 2f
+            val cz = (minZ + maxZ) / 2f
+            val rangeX = (maxX - minX).coerceAtLeast(0.001f)
+            val rangeY = (maxY - minY).coerceAtLeast(0.001f)
+            val rangeZ = (maxZ - minZ).coerceAtLeast(0.001f)
+            // 用最大轴范围做球面归一化，保证 U/V 对称
+            val maxRange = maxOf(rangeX, rangeY, rangeZ)
+
+            // 构建展开后的顶点数组 + UV（球面投影）+ 法线
+            vertexCount = tempFaces.size * 3
+            vertices = FloatArray(vertexCount * 3)
+            textureCoords = FloatArray(vertexCount * 2)
+            normals = FloatArray(vertexCount * 3)
+            var idx = 0
+            var uvi = 0
+            var ni = 0
+            for (face in tempFaces) {
+                val i0 = face[0] * 3; val i1 = face[1] * 3; val i2 = face[2] * 3
+                val ax = tempVertices[i0]; val ay = tempVertices[i0 + 1]; val az = tempVertices[i0 + 2]
+                val bx = tempVertices[i1]; val by = tempVertices[i1 + 1]; val bz = tempVertices[i1 + 2]
+                val cxv = tempVertices[i2]; val cyv = tempVertices[i2 + 1]; val czv = tempVertices[i2 + 2]
+
+                // 面法线
+                val e1x = bx - ax; val e1y = by - ay; val e1z = bz - az
+                val e2x = cxv - ax; val e2y = cyv - ay; val e2z = czv - az
+                var nx = e1y * e2z - e1z * e2y
+                var ny = e1z * e2x - e1x * e2z
+                var nz = e1x * e2y - e1y * e2x
+                val nlen = Math.sqrt((nx * nx + ny * ny + nz * nz).toDouble()).toFloat()
+                if (nlen > 0) { nx /= nlen; ny /= nlen; nz /= nlen }
+
+                for (vi in 0 until 3) {
+                    val srcIdx = face[vi] * 3
+                    val x = tempVertices[srcIdx]
+                    val y = tempVertices[srcIdx + 1]
+                    val z = tempVertices[srcIdx + 2]
+                    vertices[idx++] = x
+                    vertices[idx++] = y
+                    vertices[idx++] = z
+
+                    normals[ni++] = nx
+                    normals[ni++] = ny
+                    normals[ni++] = nz
+
+                    // 球面投影：从中心到顶点的方向 → UV
+                    val dx = (x - cx) / maxRange
+                    val dy = (y - cy) / maxRange
+                    val dz = (z - cz) / maxRange
+                    val len = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
+                    if (len > 0.0001f) {
+                        // 方位角（绕 Y 轴）：atan2(dz, dx) → [-π, π]
+                        val theta = Math.atan2(dz.toDouble(), dx.toDouble()).toFloat()
+                        // 极角（从 +Y 轴）：acos(dy/len) → [0, π]
+                        val phi = Math.acos((dy / len).coerceIn(-1f, 1f).toDouble()).toFloat()
+                        // 映射到 [0, 1]
+                        textureCoords[uvi++] = (theta + Math.PI.toFloat()) / (2f * Math.PI.toFloat())
+                        textureCoords[uvi++] = phi / Math.PI.toFloat()
+                    } else {
+                        textureCoords[uvi++] = 0.5f
+                        textureCoords[uvi++] = 0.5f
+                    }
+                }
             }
 
-            val vbb = ByteBuffer.allocateDirect(verts.size * 4)
+            // 转 ByteBuffer
+            val vbb = ByteBuffer.allocateDirect(vertices.size * 4)
             vbb.order(ByteOrder.nativeOrder())
-            vertexBuffer = vbb.asFloatBuffer().apply { put(verts); position(0) }
+            vertexBuffer = vbb.asFloatBuffer().apply {
+                put(vertices)
+                position(0)
+            }
 
-            val nbb = ByteBuffer.allocateDirect(norms.size * 4)
+            val nbb = ByteBuffer.allocateDirect(normals.size * 4)
             nbb.order(ByteOrder.nativeOrder())
-            normalBuffer = nbb.asFloatBuffer().apply { put(norms); position(0) }
+            normalBuffer = nbb.asFloatBuffer().apply {
+                put(normals)
+                position(0)
+            }
 
-            val tbb = ByteBuffer.allocateDirect(uvs.size * 4)
+            val tbb = ByteBuffer.allocateDirect(textureCoords.size * 4)
             tbb.order(ByteOrder.nativeOrder())
-            textureBuffer = tbb.asFloatBuffer().apply { put(uvs); position(0) }
+            textureBuffer = tbb.asFloatBuffer().apply {
+                put(textureCoords)
+                position(0)
+            }
 
-            Log.i("PetModel", "Loaded $fileName: $vertexCount verts")
+            Log.i(TAG, "OBJ loaded: $vertexCount vertices, ${tempFaces.size} faces")
             return true
         } catch (e: Exception) {
-            Log.e("PetModel", "Failed to load $fileName", e)
+            Log.e(TAG, "Failed to load OBJ: ${e.message}", e)
             return false
         }
     }
+
+    companion object {
+        private const val TAG = "ObjModel"
+    }
 }
 
+/**
+ * 3D 桌面宠物渲染视图。
+ * 加载 OBJ 模型并用 OpenGL ES 1.0 渲染，支持状态动画。
+ *
+ * 状态：
+ *  - IDLE (0)：缓慢自转
+ *  - LISTENING (1)：脉动缩放
+ *  - SPEAKING (2)：左右摇摆
+ *  - THINKING (3)：倾斜
+ */
 class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
-    private val renderer: PetRenderer
+    private val petRenderer: PetRenderer
 
     init {
         setEGLContextClientVersion(1)
-        renderer = PetRenderer(context)
-        setRenderer(renderer)
+        setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+        holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+        setZOrderOnTop(true)
+
+        val model = ObjModel()
+        val loaded = model.loadFromAssets(context, "robot_model.obj")
+        if (!loaded) {
+            Log.e(TAG, "Failed to load robot model, fallback to nothing")
+        }
+
+        petRenderer = PetRenderer(context, model)
+        setRenderer(petRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
 
-    fun updateState(state: Int) {
-        renderer.petState = state
+    fun setState(state: Int) {
+        petRenderer.state = state
     }
 
-    fun destroy() {
-        renderer.destroy()
-    }
+    class PetRenderer(private val context: Context, private val model: ObjModel) : GLSurfaceView.Renderer {
+        var state: Int = 0
+            set(value) { field = value }
 
-    class PetRenderer(private val context: Context) : Renderer {
-        private var model: PetModel? = null
+        private var rotation = 0f
+        private var swayAngle = 0f
+        private var timeMs: Long = 0L
         private var textureId: Int = 0
-        var petState: Int = 0
-
-        var rotationAngle: Float = 0f
-        private val rotationSpeed = 0.5f
-
-        fun setState(s: Int) { petState = s }
 
         override fun onSurfaceCreated(gl: GL10, config: EGLConfig) {
+            gl.glClearColor(0f, 0f, 0f, 0f)
             gl.glEnable(GL10.GL_DEPTH_TEST)
-            gl.glEnable(GL10.GL_TEXTURE_2D)
+            gl.glEnable(GL10.GL_BLEND)
+            gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA)
+            gl.glEnable(GL10.GL_NORMALIZE)
+            gl.glEnable(GL10.GL_LIGHTING)
+            gl.glEnable(GL10.GL_LIGHT0)
 
-            // 加载模型
-            model = PetModel().also { m ->
-                if (!m.loadFromAssets(context, "pet_model.bin")) {
-                    Log.e("PetGLSurfaceView", "Failed to load model")
-                }
-            }
+            // 环境光（明亮，让纹理白色区域保持白色）
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_AMBIENT, floatArrayOf(0.85f, 0.85f, 0.88f, 1f), 0)
+            // 漫反射光（柔和，提供立体感）
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_DIFFUSE, floatArrayOf(0.5f, 0.5f, 0.52f, 1f), 0)
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_POSITION, floatArrayOf(3f, 6f, 4f, 1f), 0)
+            gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_SPECULAR, floatArrayOf(0.3f, 0.3f, 0.32f, 1f), 0)
 
-            // 加载纹理
-            textureId = loadTexture(gl)
+            // 白色材质（纹理提供颜色，材质保持白色让 GL_MODULATE 不改变纹理色）
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_AMBIENT, floatArrayOf(1f, 1f, 1f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_DIFFUSE, floatArrayOf(1f, 1f, 1f, 1f), 0)
+            gl.glMaterialfv(GL10.GL_FRONT_AND_BACK, GL10.GL_SPECULAR, floatArrayOf(0.3f, 0.3f, 0.3f, 1f), 0)
+            gl.glMaterialf(GL10.GL_FRONT_AND_BACK, GL10.GL_SHININESS, 30f)
+
+            // 加载 2D 图片作为纹理（透明背景预处理为白色）
+            loadTexture(gl)
         }
 
-        private fun loadTexture(gl: GL10): Int {
+        /**
+         * 加载 ic_pet.png 作为纹理，透明像素替换为白色。
+         * 这样 3D 模型表面显示 2D 图片的黑白线稿：白的地方白、黑的地方黑。
+         */
+        private fun loadTexture(gl: GL10) {
             try {
-                val input: InputStream = context.assets.open("pet_texture.png")
-                val bmp = BitmapFactory.decodeStream(input)
-                input.close()
-                if (bmp == null) {
-                    Log.e("PetGLSurfaceView", "Failed to decode texture")
-                    return 0
+                val rawBitmap = android.graphics.BitmapFactory.decodeResource(
+                    context.resources, com.xiaozhi.android.R.drawable.ic_pet
+                )
+                if (rawBitmap == null) {
+                    Log.e(TAG, "Failed to decode ic_pet texture")
+                    return
                 }
+                // 预处理：透明像素 → 白色（让模型实体显示，不透明）
+                val w = rawBitmap.width
+                val h = rawBitmap.height
+                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                val pixels = IntArray(w * h)
+                rawBitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+                for (i in pixels.indices) {
+                    val alpha = (pixels[i] shr 24) and 0xFF
+                    if (alpha < 128) {
+                        // 透明背景 → 白色（与 2D 图片在 APP 中的显示一致）
+                        pixels[i] = 0xFFFFFFFF.toInt()
+                    } else if (alpha < 255) {
+                        // 半透明边缘 → 保持 RGB，设为完全不透明
+                        pixels[i] = (pixels[i] and 0x00FFFFFF) or 0xFF000000.toInt()
+                    }
+                }
+                bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+                rawBitmap.recycle()
+
                 val textures = IntArray(1)
                 gl.glGenTextures(1, textures, 0)
-                val id = textures[0]
-                gl.glBindTexture(GL10.GL_TEXTURE_2D, id)
+                textureId = textures[0]
+                gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
                 gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_LINEAR.toFloat())
                 gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER, GL10.GL_LINEAR.toFloat())
                 gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S, GL10.GL_CLAMP_TO_EDGE.toFloat())
                 gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T, GL10.GL_CLAMP_TO_EDGE.toFloat())
-                GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bmp, 0)
+                android.opengl.GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bmp, 0)
                 bmp.recycle()
-                Log.i("PetGLSurfaceView", "Texture loaded: $id")
-                return id
+                Log.i(TAG, "Texture loaded: ic_pet ${w}x${h}, id=$textureId")
             } catch (e: Exception) {
-                Log.e("PetGLSurfaceView", "Failed to load texture", e)
-                return 0
+                Log.e(TAG, "Failed to load texture: ${e.message}", e)
             }
         }
 
@@ -157,35 +318,57 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             gl.glMatrixMode(GL10.GL_PROJECTION)
             gl.glLoadIdentity()
             val ratio = width.toFloat() / height
-            val aspect = if (ratio > 1f) 1f / ratio else ratio
-            android.opengl.GLU.gluPerspective(gl, 45f, ratio, 0.1f, 100f)
-            gl.glMatrixMode(GL10.GL_MODELVIEW)
-            gl.glLoadIdentity()
+            // 视野范围适配新模型（高度4.0），近平面1.0避免裁切
+            gl.glFrustumf(-ratio * 0.6f, ratio * 0.6f, -0.6f, 0.6f, 1.0f, 20f)
         }
 
         override fun onDrawFrame(gl: GL10) {
-            gl.glClearColor(0f, 0f, 0f, 0f)
             gl.glClear(GL10.GL_COLOR_BUFFER_BIT or GL10.GL_DEPTH_BUFFER_BIT)
+            gl.glMatrixMode(GL10.GL_MODELVIEW)
             gl.glLoadIdentity()
+            // 摄像机距离-6.0，确保高度4.0的模型完全可见
+            gl.glTranslatef(0f, -0.15f, -6.0f)
 
-            gl.glTranslatef(0f, 0f, -3f)
-            rotationAngle += rotationSpeed
-            gl.glRotatef(rotationAngle, 0f, 1f, 0f)
+            timeMs = System.currentTimeMillis()
 
-            val m = model ?: return
-            val vb = m.vertexBuffer ?: return
-            val nb = m.normalBuffer ?: return
+            when (state) {
+                STATE_LISTENING -> {
+                    val scale = 1f + 0.05f * Math.sin(timeMs * 0.005).toFloat()
+                    gl.glScalef(scale, scale, scale)
+                }
+                STATE_SPEAKING -> {
+                    swayAngle = 12f * Math.sin(timeMs * 0.008).toFloat()
+                    gl.glRotatef(swayAngle, 0f, 0f, 1f)
+                }
+                STATE_THINKING -> {
+                    gl.glRotatef(8f, 0f, 0f, 1f)
+                    rotation += 0.5f
+                    gl.glRotatef(rotation * 0.3f, 0f, 1f, 0f)
+                }
+                else -> {
+                    rotation += 0.8f
+                    gl.glRotatef(rotation, 0f, 1f, 0f)
+                }
+            }
 
+            drawModel(gl)
+        }
+
+        private fun drawModel(gl: GL10) {
+            val vb = model.vertexBuffer ?: return
+            val nb = model.normalBuffer ?: return
+
+            // 启用 2D 纹理（GL_REPLACE：纹理颜色原样显示，不受光照影响）
+            // 这样 3D 模型表面颜色与 APP 内 2D 图片完全一致
             if (textureId != 0) {
                 gl.glEnable(GL10.GL_TEXTURE_2D)
                 gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
+                gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_REPLACE.toFloat())
                 gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
-                val tb = m.textureBuffer
-                if (tb != null) {
+                model.textureBuffer?.let { tb ->
                     gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, tb)
                 }
-                // 用 GL_REPLACE 直接显示纹理颜色，不受光照影响
-                gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_REPLACE.toFloat())
+                // 关闭光照，让纹理颜色 1:1 显示（白色就是纯白，黑色就是纯黑）
                 gl.glDisable(GL10.GL_LIGHTING)
             }
 
@@ -194,7 +377,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
             gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vb)
             gl.glNormalPointer(GL10.GL_FLOAT, 0, nb)
-            gl.glDrawArrays(GL10.GL_TRIANGLES, 0, m.vertexCount)
+            gl.glDrawArrays(GL10.GL_TRIANGLES, 0, model.vertexCount)
 
             gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
             gl.glDisableClientState(GL10.GL_NORMAL_ARRAY)
@@ -202,11 +385,9 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             if (textureId != 0) {
                 gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
                 gl.glDisable(GL10.GL_TEXTURE_2D)
+                // 恢复光照，供下一帧其他绘制使用
+                gl.glEnable(GL10.GL_LIGHTING)
             }
-        }
-
-        fun destroy() {
-            model = null
         }
 
         companion object {

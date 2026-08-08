@@ -166,7 +166,7 @@ class FloatingPetService : Service() {
                     else -> PetGLSurfaceView.PetRenderer.STATE_IDLE
                 }
                 Log.d(TAG, "Pet state -> $petState (deviceState=$state)")
-                (petView as? PetGLSurfaceView)?.updateState(petState)
+                (petView as? PetGLSurfaceView)?.setState(petState)
             }
         }
         Log.i(TAG, "State observing started")

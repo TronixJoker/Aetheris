@@ -1,1 +1,1 @@
-{"versionCode": 81, "versionName": "1.9.7", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.7.apk", "changelog": "替换3D桌面宠物模型：用新的GLB模型（小智）替换旧的robot_model.obj，简化到3万面，从GLB提取纹理，球面UV映射"}
+{"versionCode": 80, "versionName": "1.9.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.6.apk", "changelog": "3D纹理改用球面投影：UV基于顶点方向连续映射，消除Box Mapping在不同投影方向交界处的纹理重叠和撕裂问题"}
