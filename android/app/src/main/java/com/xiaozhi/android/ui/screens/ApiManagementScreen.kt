@@ -71,7 +71,6 @@ fun ApiManagementScreen(
     // 内置 API：每个 key 对应当前输入值
     val builtinKeys = remember { ConfigManager.ApiKey.values().toList() }
     val builtinUrls = remember { mutableStateListOf<String>().apply { addAll(builtinKeys.map { it.defaultUrl }) } }
-    val builtinExpanded = remember { mutableStateListOf<Boolean>().apply { addAll(builtinKeys.map { false }) } }
 
     // 自定义 API 列表
     val customApis = remember { mutableStateListOf<ConfigManager.CustomApi>() }
@@ -113,7 +112,7 @@ fun ApiManagementScreen(
             item {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "内置 API（系统调用，可改地址不可删除）",
+                    "内置 API（系统调用，可恢复默认）",
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.primary
@@ -128,60 +127,31 @@ fun ApiManagementScreen(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(apiKey.displayName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                Text(
-                                    builtinUrls[index],
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = if (builtinExpanded[index]) 6 else 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            TextButton(onClick = { builtinExpanded[index] = !builtinExpanded[index] }) {
-                                Text(if (builtinExpanded[index]) "收起" else "编辑")
-                            }
-                        }
-                        if (builtinExpanded[index]) {
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = builtinUrls[index],
-                                onValueChange = { builtinUrls[index] = it },
-                                label = { Text("API 地址") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(apiKey.displayName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text(
+                                builtinUrls[index],
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            ConfigManager(context).setApiUrl(apiKey, builtinUrls[index])
-                                            snackbarHostState.showSnackbar("已保存：${apiKey.displayName}")
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("保存") }
-                                OutlinedButton(
-                                    onClick = {
-                                        builtinUrls[index] = apiKey.defaultUrl
-                                        scope.launch {
-                                            ConfigManager(context).setApiUrl(apiKey, apiKey.defaultUrl)
-                                            snackbarHostState.showSnackbar("已重置为默认")
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text("重置默认") }
+                        }
+                        TextButton(onClick = {
+                            builtinUrls[index] = apiKey.defaultUrl
+                            scope.launch {
+                                ConfigManager(context).setApiUrl(apiKey, apiKey.defaultUrl)
+                                snackbarHostState.showSnackbar("已删除自定义地址，恢复默认")
                             }
+                        }) {
+                            Text("删除")
                         }
                     }
                 }
@@ -247,19 +217,6 @@ fun ApiManagementScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            IconButton(onClick = {
-                                scope.launch {
-                                    ConfigManager(context).removeCustomApi(index)
-                                    customApis.removeAt(index)
-                                    snackbarHostState.showSnackbar("已删除：${api.name}")
-                                }
-                            }) {
-                                Icon(
-                                    Icons.Filled.Delete,
-                                    contentDescription = "删除",
-                                    tint = MaterialTheme.colorScheme.error
                                 )
                             }
                         }
