@@ -1,1 +1,1 @@
-{"versionCode": 98, "versionName": "1.9.23", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.23.apk", "changelog": "API 管理改为独立页面：设置里点击「API 管理」即可进入。内置 API（14个）可编辑地址/重置默认（不可删，系统需调用）；自定义 API 支持自由添加和删除。"}
+{"versionCode": 99, "versionName": "1.9.24", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.24.apk", "changelog": "增强内置 API 技能识别：扩大天气、股票、新闻、翻译、视频、搜索等 API 的触发关键词，让更多自然说法能命中对应 API（如\"今天冷吗\"→天气、\"茅台多少钱\"→股票、\"最近发生什么\"→新闻、\"苹果用英语怎么说\"→翻译）。天气优先级提前，避免被搜索拦截。"}

@@ -1009,6 +1009,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val lower = text.lowercase().trim()
         Log.d(TAG, "Local command parsing: $text")
 
+        // ★ 天气优先级最高：含天气/体感/出行词时直接查天气，避免被搜索拦截
+        // （如"今天冷吗""出门要带伞吗"含问句词会被误判为搜索）
+        if (containsAny(text, "天气", "气温", "温度", "几度", "多少度",
+                "下雨", "下雪", "刮风", "打雷", "雾霾", "PM2", "pm2",
+                "冷不冷", "热不热", "冷吗", "热吗", "冻", "晒",
+                "穿什么", "穿几件", "带伞", "带雨伞", "出门",
+                "晴", "阴天", "多云", "阵雨", "暴雨", "大风")) {
+            val city = extractCity(text)
+            addLog("🌤️ 本地解析天气查询: ${city.ifBlank { "默认" }}")
+            viewModelScope.launch {
+                val result = commandExecutor.getWeatherVoice(city)
+                addLog("→ $result")
+                webSocketManager.sendSystemText(result)
+            }
+            return
+        }
+
         // 0. 联网搜索：识别问句或搜索意图
         if (isSearchQuery(text)) {
             val query = extractSearchQuery(text)
@@ -1036,11 +1053,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 1. 查新闻
-        if (containsAny(text, "新闻", "头条", "热点", "资讯")) {
+        // 1. 查新闻（关键词扩展：新闻词 + 时事问法）
+        if (containsAny(text, "新闻", "头条", "热点", "资讯", "早报", "晚报", "日报",
+                "最近发生", "有什么事", "新鲜事", "时事", "时政", "要闻")) {
             val query = text
-                .replace(Regex("""(今天|有什么|最新|最近|看|听|帮我|给我|查一下)?"""), "")
-                .replace(Regex("""(新闻|头条|热点|资讯)"""), "")
+                .replace(Regex("""(今天|有什么|最新|最近|看|听|帮我|给我|查一下|发生了)?"""), "")
+                .replace(Regex("""(新闻|头条|热点|资讯|早报|晚报|日报|事|时事|时政|要闻)"""), "")
                 .trim()
             addLog("📰 本地解析新闻: ${query.ifBlank { "热点" }}")
             viewModelScope.launch {
@@ -1051,11 +1069,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 2. 查股票
-        if (containsAny(text, "股票", "股价", "行情", "基金", "A股", "涨停", "跌")) {
+        // 2. 查股票（关键词扩展：行情词 + 知名标的 + 代码特征）
+        if (containsAny(text, "股票", "股价", "行情", "基金", "A股", "港股", "美股",
+                "涨停", "跌停", "涨了", "跌了", "多少钱", "走势", "市值",
+                "市盈率", "K线", "盘面", "大盘", "创业板", "科创板") ||
+            Regex("""(茅台|腾讯|阿里|比亚迪|宁德时代|中石油|工商银行|平安|京东|美团|小米|百度|网易)[^\s]{0,6}(多少钱|股价|行情|涨|跌)?""").containsMatchIn(text) ||
+            Regex("""\b(60[0-9]{4}|00[0-9]{4}|30[0-9]{4}|688[0-9]{3})\b""").containsMatchIn(text)) {
             val query = text
-                .replace(Regex("""(帮我|给我|查一下|看一下|查询)?"""), "")
-                .replace(Regex("""(股票|股价|行情|基金|的|了)"""), "")
+                .replace(Regex("""(帮我|给我|查一下|看一下|查询|现在|今天)?"""), "")
+                .replace(Regex("""(股票|股价|行情|基金|A股|港股|美股|的|了|多少钱|走势|市值)"""), "")
                 .trim()
             if (query.isNotEmpty()) {
                 addLog("📈 本地解析股票: $query")
@@ -1068,11 +1090,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 3. 搜索视频
-        if (containsAny(text, "搜视频", "找视频", "B站", "b站", "bilibili", "看视频")) {
+        // 3. 搜索视频（关键词扩展：平台词 + 视频意图词）
+        if (containsAny(text, "搜视频", "找视频", "B站", "b站", "bilibili", "看视频",
+                "抖音", "快手", "推荐视频", "有意思的视频", "短视频", "视频")) {
             val query = text
-                .replace(Regex("""(帮我|给我|搜一下|搜索|找一下|找)?"""), "")
-                .replace(Regex("""(视频|B站|b站|bilibili|的)"""), "")
+                .replace(Regex("""(帮我|给我|搜一下|搜索|找一下|找|推荐|有意思的)?"""), "")
+                .replace(Regex("""(视频|B站|b站|bilibili|抖音|快手|短视频|的)"""), "")
                 .trim()
             if (query.isNotEmpty()) {
                 addLog("🎬 本地解析视频搜索: $query")
@@ -1085,8 +1108,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 4. 翻译
-        if (containsAny(text, "翻译", "译成", "翻译成")) {
+        // 4. 翻译（关键词扩展：翻译动词 + "怎么说/怎么拼"等口语问法）
+        if (containsAny(text, "翻译", "译成", "翻译成", "怎么说", "怎么拼", "用英语说", "用英文说",
+                "用日语说", "用韩语说", "英文翻译", "英语翻译")) {
             val targetLang = when {
                 text.contains("英语") || text.contains("英文") || text.contains("en") -> "en"
                 text.contains("日语") || text.contains("日文") || text.contains("jp") -> "ja"
@@ -1098,7 +1122,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val content = text
                 .replace(Regex("""(帮我|给我|请)?"""), "")
-                .replace(Regex("""(翻译|译成|翻译成)"""), "")
+                .replace(Regex("""(翻译|译成|翻译成|怎么说|怎么拼|用|说)"""), "")
                 .replace(Regex("""(英语|英文|日语|日文|韩语|韩文|法语|法文|德语|德文|中文|汉语|en|jp|ko|fr|de)"""), "")
                 .replace(Regex("""(成|为)"""), "")
                 .trim()
@@ -1131,17 +1155,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 7. 查天气
-        if (containsAny(text, "天气", "气温", "下雨", "穿", "带伞", "温度")) {
-            val city = extractCity(text)
-            addLog("🌤️ 本地解析天气查询: ${city.ifBlank { "默认" }}")
-            viewModelScope.launch {
-                val result = commandExecutor.getWeatherVoice(city)
-                addLog("→ $result")
-                webSocketManager.sendSystemText(result)
-            }
-            return
-        }
+        // 7. 查天气（已上移到最前，此处保留编号占位）
 
         // 8. 拨号
         if (containsAny(text, "打给", "拨打", "打电话", "call")) {
@@ -1182,14 +1196,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 判断是否为需要联网搜索的问题。
      * 触发条件：问句（什么/怎么/为什么/多少...）或 搜索意图（搜/查/找...）
+     * 或知识获取意图（想知道/了解一下/科普/是什么意思）
      */
     private fun isSearchQuery(text: String): Boolean {
-        val questionWords = listOf("什么", "怎么", "如何", "为什么", "谁", "哪", "多少", "几", "吗", "呢", "是不是")
-        val searchWords = listOf("搜", "搜索", "查一下", "查查", "找一下", "百度", "谷歌", "查查看")
-        
+        val questionWords = listOf(
+            "什么", "怎么", "如何", "为什么", "谁", "哪", "多少", "几", "吗", "呢",
+            "是不是", "啥", "为何", "啥意思", "什么意思", "是什么意思", "区别"
+        )
+        val searchWords = listOf(
+            "搜", "搜索", "查一下", "查查", "找一下", "百度", "谷歌", "查查看",
+            "想知道", "了解一下", "了解下", "科普", "百科", "解释一下", "介绍一下"
+        )
+
         val hasQuestion = questionWords.any { text.contains(it) }
         val hasSearchIntent = searchWords.any { text.contains(it) }
-        
+
         // 问句且长度>5，或明确搜索意图
         return (hasQuestion && text.length > 5) || hasSearchIntent
     }
