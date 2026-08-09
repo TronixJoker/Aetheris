@@ -1,1 +1,1 @@
-{"versionCode": 80, "versionName": "1.9.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.6.apk", "changelog": "3D纹理改用球面投影：UV基于顶点方向连续映射，消除Box Mapping在不同投影方向交界处的纹理重叠和撕裂问题"}
+{"versionCode": 82, "versionName": "1.9.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.6.apk", "changelog": "1.9.7 版本的3D桌面宠物存在显示问题，本版本回退至 1.9.6 稳定版。已升级到 1.9.7 的用户请通过此更新恢复3D功能。"}
