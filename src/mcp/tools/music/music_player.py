@@ -152,10 +152,9 @@ class MusicPlayer:
             "SEARCH_URL": cm.get_config(
                 "MUSIC.SEARCH_URL", "http://search.kuwo.cn/r.s"
             ),
-            "URL_API": cm.get_config(
-                "MUSIC.URL_API", "https://lxmusicapi.onrender.com"
-            ),
-            "URL_API_KEY": cm.get_config("MUSIC.URL_API_KEY", "share-v3"),
+            # 直链 API 与 Key 默认留空，需在「设置 > 音乐」中填入 music-api 地址
+            "URL_API": cm.get_config("MUSIC.URL_API", ""),
+            "URL_API_KEY": cm.get_config("MUSIC.URL_API_KEY", ""),
             "LYRICS_URL": cm.get_config(
                 "MUSIC.LYRICS_URL",
                 "http://m.kuwo.cn/newh5/singles/songinfoandlrc",
@@ -755,7 +754,14 @@ class MusicPlayer:
                     pass
 
             quality = self.config["DEFAULT_BR"]
-            play_url = f"{self.config['URL_API']}/url/kw/{song_id}/{quality}"
+            url_api = self.config["URL_API"]
+            if not url_api:
+                logger.error(
+                    "未配置直链 API（MUSIC.URL_API），无法获取播放地址。"
+                    "请在「设置 > 音乐」中填入 music-api 地址后重试。"
+                )
+                return "", ""
+            play_url = f"{url_api}/url/kw/{song_id}/{quality}"
 
             logger.info(f"找到歌曲: {display_name}, ID: {song_id}")
 

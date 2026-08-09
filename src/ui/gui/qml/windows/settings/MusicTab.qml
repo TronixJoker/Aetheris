@@ -89,7 +89,7 @@ ScrollView {
                     Layout.fillWidth: true
                     text: settingsModel ? settingsModel.musicUrlApiKey : ""
                     onEditingFinished: if (settingsModel) settingsModel.musicUrlApiKey = text
-                    placeholderText: "留空使用默认 Key"
+                    placeholderText: "留空表示不使用 Key"
                     font.pixelSize: Theme.fontSizeSm
                     background: Rectangle {
                         radius: Theme.radiusSm
@@ -97,10 +97,30 @@ ScrollView {
                         border.color: musicUrlApiKeyField.activeFocus ? Theme.primary : "transparent"
                     }
                 }
+
+                Text {
+                    text: "歌词 API"
+                    font.pixelSize: Theme.fontSizeSm
+                    color: Theme.textSecondary
+                    Layout.preferredWidth: 120
+                }
+                TextField {
+                    id: musicLyricsUrlField
+                    Layout.fillWidth: true
+                    text: settingsModel ? settingsModel.musicLyricsUrl : ""
+                    onEditingFinished: if (settingsModel) settingsModel.musicLyricsUrl = text
+                    placeholderText: "留空使用默认酷我歌词 API"
+                    font.pixelSize: Theme.fontSizeSm
+                    background: Rectangle {
+                        radius: Theme.radiusSm
+                        color: Theme.backgroundSecondary
+                        border.color: musicLyricsUrlField.activeFocus ? Theme.primary : "transparent"
+                    }
+                }
             }
 
             Text {
-                text: "搜索 API 使用酷我官方接口，直链 API 用于获取播放地址（需配合 API Key）"
+                text: "搜索/歌词 API 默认使用酷我官方接口；直链 API 用于获取播放地址（需配合 API Key），默认留空，请在下方填入 music-api 地址"
                 font.pixelSize: Theme.fontSizeXs
                 color: Theme.textTertiary
                 wrapMode: Text.WordWrap
@@ -131,6 +151,27 @@ ScrollView {
                 columns: 2
                 rowSpacing: Theme.spacingMd
                 columnSpacing: Theme.spacingLg
+
+                Text {
+                    text: "默认平台"
+                    font.pixelSize: Theme.fontSizeSm
+                    color: Theme.textSecondary
+                    Layout.preferredWidth: 120
+                }
+                XComboBox {
+                    id: musicPlatformCombo
+                    Layout.preferredWidth: 150
+                    model: ["kw", "netease", "qq", "kugou", "migu"]
+                    currentIndex: {
+                        var p = settingsModel ? settingsModel.musicDefaultPlatform : "kw"
+                        var idx = ["kw", "netease", "qq", "kugou", "migu"].indexOf(p)
+                        return idx >= 0 ? idx : 0
+                    }
+                    onActivated: function(index) {
+                        if (settingsModel) settingsModel.musicDefaultPlatform = model[index]
+                    }
+                    font.pixelSize: Theme.fontSizeSm
+                }
 
                 Text {
                     text: "默认音质"

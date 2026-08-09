@@ -237,6 +237,16 @@ class SettingsModel(BaseModel):
         str, _get_musicUrlApiKey, _set_musicUrlApiKey, notify=settingsChanged
     )
 
+    def _get_musicLyricsUrl(self) -> str:
+        return self._get_value("MUSIC.LYRICS_URL", "")
+
+    def _set_musicLyricsUrl(self, value: str):
+        self._set_value("MUSIC.LYRICS_URL", value)
+
+    musicLyricsUrl = Property(
+        str, _get_musicLyricsUrl, _set_musicLyricsUrl, notify=settingsChanged
+    )
+
     def _get_musicDefaultPlatform(self) -> str:
         return self._get_value("MUSIC.DEFAULT_PLATFORM", "kw")
 
