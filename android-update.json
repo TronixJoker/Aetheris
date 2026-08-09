@@ -1,1 +1,1 @@
-{"versionCode": 91, "versionName": "1.9.16", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.16.apk", "changelog": "回退1.9.14/1.9.15的纹理破坏性修改，恢复1.9.13完整原始状态(头朝上+背景正确)。仅对连接处描边像素做轻微柔化(402个像素，保留70%描边感)，不改动模型几何和整体纹理。"}
+{"versionCode": 92, "versionName": "1.9.17", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.17.apk", "changelog": "修复模型缝隙透空问题：发现2505个顶点采样到透明纹理像素(分布在全身)，导致模型表面有透明洞可看到背景。将845个被采样的透明像素用周围颜色填充为不透明，模型表面不再透空。背景仍保持透明。模型朝向和色彩保持1.9.13状态不变。"}
