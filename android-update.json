@@ -1,1 +1,1 @@
-{"versionCode": 82, "versionName": "1.9.6", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.6.apk", "changelog": "1.9.7 版本的3D桌面宠物存在显示问题，本版本回退至 1.9.6 稳定版。已升级到 1.9.7 的用户请通过此更新恢复3D功能。"}
+{"versionCode": 83, "versionName": "1.9.8", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.8.apk", "changelog": "修复3D桌面宠物显示问题：回退至1.9.6稳定的robot_model.obj渲染方案（OBJ模型+ic_pet纹理）。1.9.7用户请更新至此版本。"}
