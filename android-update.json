@@ -1,1 +1,1 @@
-{"versionCode": 83, "versionName": "1.9.8", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.8.apk", "changelog": "修复3D桌面宠物显示问题：回退至1.9.6稳定的robot_model.obj渲染方案（OBJ模型+ic_pet纹理）。1.9.7用户请更新至此版本。"}
+{"versionCode": 84, "versionName": "1.9.9", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.9.apk", "changelog": "修复3D桌面宠物颜色与模型不匹配问题：解码GLB原生UV坐标(此前1.9.7误用球面投影导致纹理错位)，使用小智角色原生纹理，颜色现在正确贴合模型。"}
