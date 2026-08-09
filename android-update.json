@@ -1,1 +1,1 @@
-{"versionCode": 86, "versionName": "1.9.11", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.11.apk", "changelog": "修复3D桌面宠物倒立与黑背景问题：保留Y-up坐标变换确保模型正立；翻转纹理V坐标(1-V)修正纹理映射使珩杬头部正确显示；纹理背景设为透明并开启OpenGL alpha混合(GL_BLEND)消除黑背景。颜色贴合3D角色模型。"}
+{"versionCode": 87, "versionName": "1.9.12", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.12.apk", "changelog": "修复3D宠物显示：恢复完整90000顶点模型(上版误用简化模型导致无显示)；移除V坐标翻转(经采样验证不翻转时头部正确映射眼睛纹理)；纹理深灰背景设为透明并开启GL_BLEND消除黑背景。颜色与朝向均正确。"}
