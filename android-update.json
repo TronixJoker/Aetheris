@@ -1,1 +1,1 @@
-{"versionCode": 88, "versionName": "1.9.13", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.13.apk", "changelog": "修复3D宠物头脚颠倒：翻转模型Y轴坐标及法线，让头部朝上脚部朝下。背景透明与颜色映射保持1.9.12的正确状态。"}
+{"versionCode": 89, "versionName": "1.9.14", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.14.apk", "changelog": "修复手臂/头部与身体连接处颜色异常：将纹理中27647个偏蓝色彩色像素转为灰度(保持亮度)，消除连接处色差。模型朝向、背景透明保持不变。"}
