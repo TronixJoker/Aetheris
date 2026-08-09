@@ -1,1 +1,1 @@
-{"versionCode": 89, "versionName": "1.9.14", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.14.apk", "changelog": "修复手臂/头部与身体连接处颜色异常：将纹理中27647个偏蓝色彩色像素转为灰度(保持亮度)，消除连接处色差。模型朝向、背景透明保持不变。"}
+{"versionCode": 90, "versionName": "1.9.15", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.15.apk", "changelog": "修复手臂/头部与身体连接处的白边黑里接缝：将连接区域(Y 0.1-0.7)内所有极端亮度顶点(白>220或黑<80)的UV重定向到中等灰度纹理区域，消除接缝色差。头部和脚部保持不变。"}
