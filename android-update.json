@@ -1,1 +1,1 @@
-{"versionCode": 84, "versionName": "1.9.9", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.9.apk", "changelog": "修复3D桌面宠物颜色与模型不匹配问题：解码GLB原生UV坐标(此前1.9.7误用球面投影导致纹理错位)，使用小智角色原生纹理，颜色现在正确贴合模型。"}
+{"versionCode": 85, "versionName": "1.9.10", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.10.apk", "changelog": "修复3D桌面宠物朝向与黑背景：将模型坐标系从Z-up转换为Y-up(原GLB高度沿Z导致躺平，现沿Y站立)；纹理alpha预合成到白底消除半透明黑背景。颜色贴合珩杬3D角色模型。"}
