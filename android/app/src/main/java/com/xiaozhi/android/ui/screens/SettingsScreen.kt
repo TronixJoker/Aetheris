@@ -40,6 +40,12 @@ fun SettingsScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<UpdateManager.UpdateResult?>(null) }
 
+    // API 管理卡片：用 Map<ApiKey, String> 存储每个 API 的当前输入值
+    val apiKeys = remember { ConfigManager.ApiKey.values().toList() }
+    val apiUrlStates = remember {
+        apiKeys.associateWith { mutableStateOf(it.defaultUrl) }
+    }
+
     val updateManager = remember { UpdateManager(context) }
     val updateState by updateManager.updateState.collectAsStateWithLifecycle()
     val downloadProgress by updateManager.downloadProgress.collectAsStateWithLifecycle()
@@ -63,6 +69,10 @@ fun SettingsScreen(
         deviceId = configManager.getDeviceId() ?: ""
         clientId = configManager.getClientId()
         activationVersion = configManager.getActivationVersion()
+        // 读取所有外部 API URL 填入对应输入框
+        configManager.getAllApiUrls().forEach { (apiKey, url) ->
+            apiUrlStates[apiKey]?.value = url
+        }
     }
 
     // Auto-close dialog for certain states
@@ -339,6 +349,77 @@ fun SettingsScreen(
                 singleLine = true,
                 enabled = false
             )
+
+            // ==================== API 管理卡片 ====================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("API 管理", fontWeight = FontWeight.Medium)
+                            Text(
+                                "查看并修改 APP 调用的所有 API 地址（共 ${apiKeys.size} 个）",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    // 列出所有 API 的输入框
+                    apiKeys.forEach { apiKey ->
+                        OutlinedTextField(
+                            value = apiUrlStates[apiKey]?.value ?: apiKey.defaultUrl,
+                            onValueChange = { newVal ->
+                                apiUrlStates[apiKey]?.value = newVal
+                            },
+                            label = { Text(apiKey.displayName) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // 保存 API 配置按钮
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val configManager = ConfigManager(viewModel.getApplication())
+                                val urlMap = apiKeys.associateWith { apiKey ->
+                                    apiUrlStates[apiKey]?.value ?: apiKey.defaultUrl
+                                }
+                                configManager.setAllApiUrls(urlMap)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("保存 API 配置")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 重置 API 配置按钮
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val configManager = ConfigManager(viewModel.getApplication())
+                                configManager.resetApiUrls()
+                                // 同步刷新输入框显示为默认值
+                                apiKeys.forEach { apiKey ->
+                                    apiUrlStates[apiKey]?.value = apiKey.defaultUrl
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("重置为默认 API")
+                    }
+                }
+            }
 
             Button(
                 onClick = {

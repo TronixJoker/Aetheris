@@ -1,6 +1,7 @@
 package com.xiaozhi.android.control
 
 import android.util.Log
+import com.xiaozhi.android.config.ConfigManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -66,7 +67,7 @@ class ApiService {
         if (query.isBlank()) return ""
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://lite.duckduckgo.com/lite/?q=${URLEncoder.encode(query, "UTF-8")}"
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.SEARCH_DUCKDUCKGO)}${URLEncoder.encode(query, "UTF-8")}"
                 val html = httpGet(url)
                 if (html.isBlank()) return@withContext ""
 
@@ -104,7 +105,8 @@ class ApiService {
         return withContext(Dispatchers.IO) {
             try {
                 // 先搜索匹配的条目标题
-                val searchUrl = "https://zh.wikipedia.org/w/api.php?" +
+                val wikiApi = ConfigManager.getApiUrlSync(ConfigManager.ApiKey.WIKI)
+                val searchUrl = wikiApi +
                     "action=query&list=search&srsearch=${URLEncoder.encode(query, "UTF-8")}" +
                     "&format=json&srlimit=1&utf8=1"
                 val searchBody = httpGet(searchUrl)
@@ -116,7 +118,7 @@ class ApiService {
                 val title = titleMatch.groupValues[1]
 
                 // 获取条目摘要
-                val extractUrl = "https://zh.wikipedia.org/w/api.php?" +
+                val extractUrl = wikiApi +
                     "action=query&prop=extracts&exintro=true&explaintext=true" +
                     "&titles=${URLEncoder.encode(title, "UTF-8")}&format=json&utf8=1"
                 val extractBody = httpGet(extractUrl)
@@ -157,7 +159,7 @@ class ApiService {
                     return@withContext searchStockByName(query)
                 }
 
-                val url = "https://hq.sinajs.cn/list=${codes.joinToString(",")}"
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.STOCK)}${codes.joinToString(",")}"
                 val body = httpGet(url, mapOf("Referer" to "https://finance.sina.com.cn"))
                 if (body.isBlank()) return@withContext "未获取到股票行情"
 
@@ -199,7 +201,7 @@ class ApiService {
     /** 用关键词搜索股票代码 */
     private suspend fun searchStockByName(keyword: String): String {
         return try {
-            val url = "https://suggest3.sinajs.cn/suggest/type=&key=${URLEncoder.encode(keyword, "UTF-8")}&name=suggestdata"
+            val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.STOCK_SUGGEST)}${URLEncoder.encode(keyword, "UTF-8")}&name=suggestdata"
             val body = httpGet(url, mapOf("Referer" to "https://finance.sina.com.cn"))
             if (body.isBlank()) return "未找到相关股票"
 
@@ -271,7 +273,7 @@ class ApiService {
         if (query.isBlank()) return ""
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://api.bilibili.com/x/web-interface/search/type?" +
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)}" +
                     "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
                     "&page=1&page_size=5"
                 val body = httpGet(url, mapOf("Referer" to "https://www.bilibili.com"))
@@ -314,7 +316,7 @@ class ApiService {
         return withContext(Dispatchers.IO) {
             try {
                 // wttr.in 免费天气 API，返回简洁文本格式
-                val url = "https://wttr.in/${URLEncoder.encode(city, "UTF-8")}?format=%l:+%c+%t+%h+%w+%p&lang=zh"
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.WEATHER)}${URLEncoder.encode(city, "UTF-8")}?format=%l:+%c+%t+%h+%w+%p&lang=zh"
                 val body = httpGet(url)
                 if (body.isNotBlank() && !body.contains("ERROR") && !body.contains("Unknown")) {
                     "【天气】$body"
@@ -332,7 +334,7 @@ class ApiService {
     private suspend fun getWeatherFallback(city: String): String {
         return try {
             // 备用方案：百度搜索天气 HTML 抓取
-            val url = "https://www.baidu.com/s?wd=${URLEncoder.encode("$city 天气", "UTF-8")}"
+            val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.WEATHER_FALLBACK)}${URLEncoder.encode("$city 天气", "UTF-8")}"
             val html = httpGet(url)
             if (html.isBlank()) return ""
 
@@ -363,7 +365,7 @@ class ApiService {
 
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://api.mymemory.translated.net/get?" +
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.TRANSLATE)}" +
                     "q=${URLEncoder.encode(text, "UTF-8")}" +
                     "&langpair=$sourceLang|$targetLang"
                 val body = httpGet(url)
@@ -394,7 +396,7 @@ class ApiService {
         return withContext(Dispatchers.IO) {
             try {
                 val keyword = if (query.isBlank()) "今日热点新闻" else query
-                val url = "https://news.baidu.com/ns?word=${URLEncoder.encode(keyword, "UTF-8")}&tn=newsdy&from=news"
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.NEWS)}${URLEncoder.encode(keyword, "UTF-8")}&tn=newsdy&from=news"
                 val html = httpGet(url)
                 if (html.isBlank()) return@withContext ""
 
@@ -459,7 +461,7 @@ class ApiService {
         if (query.isBlank()) return ""
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://music.163.com/api/search/get?" +
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.MUSIC_SEARCH)}" +
                     "s=${URLEncoder.encode(query, "UTF-8")}" +
                     "&type=1&limit=5&offset=0"
                 val body = httpGet(url, mapOf("Referer" to "https://music.163.com"))
@@ -581,7 +583,7 @@ class ApiService {
      */
     private suspend fun searchBilibiliVideos(keyword: String): List<Pair<String, String>> {
         return try {
-            val searchUrl = "https://api.bilibili.com/x/web-interface/search/type?" +
+            val searchUrl = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)}" +
                 "search_type=video&keyword=${URLEncoder.encode(keyword, "UTF-8")}" +
                 "&page=1&page_size=8"
             val searchBody = httpGet(
@@ -656,7 +658,7 @@ class ApiService {
         return withContext(Dispatchers.IO) {
             try {
                 // Step 1: 通过 bvid 获取 cid
-                val viewUrl = "https://api.bilibili.com/x/web-interface/view?bvid=$bvid"
+                val viewUrl = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_VIEW)}$bvid"
                 val viewBody = httpGet(viewUrl, mapOf("Referer" to "https://www.bilibili.com"))
                 if (viewBody.isBlank()) return@withContext null
                 val cidRegex = Regex(""""cid"\s*:\s*(\d+)""")
@@ -664,7 +666,7 @@ class ApiService {
                 val cid = cidMatch.groupValues[1]
 
                 // Step 2: 获取播放地址（DASH 格式）
-                val playUrl = "https://api.bilibili.com/x/player/playurl?" +
+                val playUrl = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_PLAYURL)}" +
                     "bvid=$bvid&cid=$cid&fnval=16&qn=16"
                 val playBody = httpGet(playUrl, mapOf("Referer" to "https://www.bilibili.com"))
                 if (playBody.isBlank()) return@withContext null
@@ -702,7 +704,7 @@ class ApiService {
     private suspend fun searchMusicNetease(query: String): MusicInfo? {
         return withContext(Dispatchers.IO) {
             try {
-                val url = "https://music.163.com/api/search/get?" +
+                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.MUSIC_SEARCH)}" +
                     "s=${URLEncoder.encode(query, "UTF-8")}" +
                     "&type=1&limit=1&offset=0"
                 val body = httpGet(url, mapOf("Referer" to "https://music.163.com"))
@@ -720,7 +722,7 @@ class ApiService {
                 val songName = nameMatch?.groupValues[1]?.replace("\\\"", "\"") ?: "未知歌曲"
                 val artist = artistMatch?.groupValues[1] ?: "未知歌手"
 
-                val playUrl = "https://music.163.com/song/media/outer/url?id=$songId.mp3"
+                val playUrl = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.MUSIC_PLAY)}$songId.mp3"
 
                 MusicInfo(
                     id = songId,
