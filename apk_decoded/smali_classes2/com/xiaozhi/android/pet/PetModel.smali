@@ -270,10 +270,6 @@
     .line 60
     aget v7, v2, v7
 
-    const/high16 v9, 0x3f800000
-
-    sub-float v7, v9, v7
-
     aput v7, v5, v8
 
     add-int/lit8 v6, v6, 0x1
