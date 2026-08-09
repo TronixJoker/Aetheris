@@ -617,7 +617,7 @@
 .end method
 
 .method private static final setupTouchListener$lambda$7(Lcom/xiaozhi/android/pet/FloatingPetService;Landroid/view/View;Landroid/view/View;Landroid/view/MotionEvent;)Z
-    .locals 4
+    .locals 8
 
     .line 198
     invoke-virtual {p3}, Landroid/view/MotionEvent;->getAction()I
@@ -791,6 +791,57 @@
 
     .line 200
     :cond_a
+    # === 模型范围触摸检测: 只响应机器人模型区域内的触摸 ===
+    invoke-virtual {p3}, Landroid/view/MotionEvent;->getX()F
+
+    move-result v4
+
+    invoke-virtual {p3}, Landroid/view/MotionEvent;->getY()F
+
+    move-result v5
+
+    invoke-virtual {p1}, Landroid/view/View;->getWidth()I
+
+    move-result v6
+
+    invoke-virtual {p1}, Landroid/view/View;->getHeight()I
+
+    move-result v7
+
+    # 中心点 centerX=width/2, centerY=height/2
+    div-int/lit8 v6, v6, 0x2
+
+    div-int/lit8 v7, v7, 0x2
+
+    # dx = touchX - centerX, dy = touchY - centerY
+    float-to-int v4, v4
+
+    float-to-int v5, v5
+
+    sub-int/2addr v4, v6
+
+    sub-int/2addr v5, v7
+
+    # |dx|, |dy|
+    invoke-static {v4}, Ljava/lang/Math;->abs(I)I
+
+    move-result v4
+
+    invoke-static {v5}, Ljava/lang/Math;->abs(I)I
+
+    move-result v5
+
+    # 阈值: width/4 和 height/4 (中心50%区域=模型范围)
+    div-int/lit8 v6, v6, 0x2
+
+    div-int/lit8 v7, v7, 0x2
+
+    # 超出阈值则不响应(返回false)
+    if-gt v4, v6, :goto_3
+
+    if-gt v5, v7, :goto_3
+    # === 检测结束 ===
+
     iget-object p2, p0, Lcom/xiaozhi/android/pet/FloatingPetService;->layoutParams:Landroid/view/WindowManager$LayoutParams;
 
     if-eqz p2, :cond_b
@@ -979,11 +1030,11 @@
 
     move-object v7, v14
 
-    # width = v2 * 3 / 5 (缩小触摸范围贴合机器人宽度)
+    # width = v2 * 3 / 5 (60%, 模型宽度)
     mul-int/lit8 v8, v2, 0x3
     div-int/lit8 v8, v8, 0x5
 
-    # height = v2 * 4 / 5 (缩小触摸范围贴合机器人高度)
+    # height = v2 * 4 / 5 (80%, 模型高度)
     mul-int/lit8 v9, v2, 0x4
     div-int/lit8 v9, v9, 0x5
 
