@@ -1,0 +1,37 @@
+version: 2.9.3
+apkFileName: Aetheris-v1.9.10.apk
+isFrameworkApk: false
+usesFramework:
+  ids:
+  - 1
+  tag: null
+sdkInfo:
+  minSdkVersion: 26
+  targetSdkVersion: 35
+packageInfo:
+  forcedPackageId: 127
+  renameManifestPackage: null
+versionInfo:
+  versionCode: 86
+  versionName: 1.9.11
+resourcesAreCompressed: false
+sharedLibrary: false
+sparseResources: false
+unknownFiles:
+  DebugProbesKt.bin: 8
+  kotlin-tooling-metadata.json: 8
+  okhttp3/internal/publicsuffix/NOTICE: 8
+  okhttp3/internal/publicsuffix/publicsuffixes.gz: 0
+doNotCompress:
+- resources.arsc
+- png
+- lib/x86_64/libdatastore_shared_counter.so
+- lib/x86_64/libandroidx.graphics.path.so
+- lib/x86/libdatastore_shared_counter.so
+- lib/x86/libandroidx.graphics.path.so
+- lib/arm64-v8a/libdatastore_shared_counter.so
+- lib/arm64-v8a/libandroidx.graphics.path.so
+- lib/armeabi-v7a/libdatastore_shared_counter.so
+- lib/armeabi-v7a/libandroidx.graphics.path.so
+- assets/dexopt/baseline.profm
+- assets/dexopt/baseline.prof
