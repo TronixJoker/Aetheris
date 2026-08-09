@@ -8,6 +8,9 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -250,6 +253,7 @@ class FloatingPetService : Service() {
     /**
      * 点击宠物：直接在悬浮窗内开始/停止对话，不跳转页面。
      * 只有 APP 被系统杀掉时才启动 Activity（冷启动）。
+     * 点击时会触发震动反馈，不同状态采用不同的震动模式，让用户能"摸"出当前操作。
      */
     private fun performPetClick() {
         Log.i(TAG, "Pet clicked")
@@ -261,24 +265,34 @@ class FloatingPetService : Service() {
             Log.i(TAG, "ViewModel found, state=$state, toggling directly (no Activity jump)")
             when (state) {
                 com.xiaozhi.android.model.DeviceState.CONNECTING -> {
+                    // 连接中：轻震一下表示"稍候"
+                    vibrate(longArrayOf(0L, 30L), 60)
                     toast("正在连接中，请稍候...")
                 }
                 com.xiaozhi.android.model.DeviceState.LISTENING -> {
+                    // 停止聆听：短-短 双震
+                    vibrate(longArrayOf(0L, 40L, 60L, 40L), 80)
                     toast("停止聆听")
                     viewModel.toggleListening()
                 }
                 com.xiaozhi.android.model.DeviceState.SPEAKING -> {
+                    // 打断 AI：强而短的一震
+                    vibrate(longArrayOf(0L, 80L), 120)
                     toast("打断 AI")
                     viewModel.toggleListening()
                 }
                 else -> {
                     // IDLE 或断开状态 → 启动聆听（内部会处理重连）
+                    // 唤醒：短-停-长 的"嘀哒"震感
+                    vibrate(longArrayOf(0L, 30L, 80L, 100L), 100)
                     toast("唤醒小智...")
                     viewModel.toggleListening()
                 }
             }
         } else {
             // APP 被系统杀掉 → 只能启动 Activity 重建 ViewModel
+            // 冷启动：单次中等震感
+            vibrate(longArrayOf(0L, 60L), 80)
             Log.w(TAG, "ViewModel is null, launching MainActivity (cold start)")
             toast("正在启动小智...")
             val intent = Intent(this, MainActivity::class.java).apply {
@@ -286,6 +300,38 @@ class FloatingPetService : Service() {
                 action = MainActivity.ACTION_PET_LISTEN
             }
             startActivity(intent)
+        }
+    }
+
+    /**
+     * 触发震动反馈。
+     * @param timings 震动模式（毫秒）：[off, on, off, on, ...]，第一个值是首次震动前的等待时间
+     * @param amplitude 震动强度（1-255），低于 API26 的设备忽略此参数
+     */
+    private fun vibrate(timings: LongArray, amplitude: Int) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(VibratorManager::class.java)
+                vibratorManager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(VIBRATOR_SERVICE) as? Vibrator
+            } ?: return
+            if (!vibrator.hasVibrator()) return
+            val amp = amplitude.coerceIn(1, 255)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // 注意：createWaveform(timings, int) 的第二个参数是「重复索引」而非强度，
+                // 这里必须使用带 amplitudes 数组的重载，否则会越界崩溃。
+                // amplitudes 数组长度 = timings.size / 2（每段 "on" 对应一个强度）
+                val amplitudes = IntArray(timings.size / 2) { amp }
+                val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
+                vibrator.vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(timings, -1)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "vibrate failed: ${e.message}")
         }
     }
 

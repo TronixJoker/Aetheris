@@ -1005,6 +1005,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 这是 AI 服务器 MCP 工具调用的保底方案——即使 AI 只回复文字不调工具，
      * 本地也能识别并执行闹钟、天气、拨号等操作。
      */
+    /**
+     * 把本地工具（天气/新闻/股票/视频/搜索/翻译/音乐等 API）查询到的结果，
+     * 交给小智大模型（LLM）做合理总结后用语音播报给用户。
+     *
+     * 实现方式：把 API 原始结果包装成一段明确的「系统提示」，
+     * 通过 sendSystemText（模拟 STT）发给 AI 服务器，让 LLM 把它理解为
+     * 「这是本地工具查询到的信息，需要整理成自然口语播报给用户」，
+     * 而不是把原始数据直接念出来或当成用户输入。
+     *
+     * @param intent  用户意图描述（如"北京天气""贵州茅台股票"），用于让 LLM 知道语境
+     * @param result  本地工具返回的原始结果
+     */
+    private fun reportToolResult(intent: String, result: String) {
+        if (result.isBlank()) return
+        val prompt = "（系统提示：用户询问$intent，本地工具查询到以下信息，" +
+            "请基于这些信息用自然、简洁的口语向用户播报要点，不要复述原始格式。）\n$result"
+        addLog("🤖 交由大模型整理播报：$intent")
+        webSocketManager.sendSystemText(prompt)
+    }
+
     private fun parseAndExecuteLocalCommand(text: String) {
         val lower = text.lowercase().trim()
         Log.d(TAG, "Local command parsing: $text")
@@ -1021,7 +1041,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 val result = commandExecutor.getWeatherVoice(city)
                 addLog("→ $result")
-                webSocketManager.sendSystemText(result)
+                reportToolResult("${city.ifBlank { "当前" }}天气", result)
             }
             return
         }
@@ -1043,7 +1063,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val summary = commandExecutor.searchWeb(query)
                     if (summary.isNotBlank()) {
                         addLog("📖 搜索结果：$summary")
-                        webSocketManager.sendSystemText("根据搜索结果：$summary")
+                        reportToolResult(query, summary)
                     } else {
                         addLog("⚠️ 搜索失败，建议您手动搜索")
                         webSocketManager.sendSystemText("抱歉，联网搜索暂时不可用，请稍后再试")
@@ -1064,7 +1084,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 val result = commandExecutor.getNews(query)
                 addLog("→ $result")
-                webSocketManager.sendSystemText(result)
+                reportToolResult("${query.ifBlank { "热点" }}新闻", result)
             }
             return
         }
@@ -1084,7 +1104,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 viewModelScope.launch {
                     val result = commandExecutor.getStock(query)
                     addLog("→ $result")
-                    webSocketManager.sendSystemText(result)
+                    reportToolResult("$query 股票行情", result)
                 }
                 return
             }
@@ -1102,7 +1122,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 viewModelScope.launch {
                     val result = commandExecutor.searchVideo(query)
                     addLog("→ $result")
-                    webSocketManager.sendSystemText(result)
+                    reportToolResult("$query 视频", result)
                 }
                 return
             }
@@ -1131,7 +1151,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 viewModelScope.launch {
                     val result = commandExecutor.translate(content, targetLang)
                     addLog("→ $result")
-                    webSocketManager.sendSystemText(result)
+                    reportToolResult("$content 翻译", result)
                 }
                 return
             }
@@ -1188,7 +1208,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 val result = commandExecutor.searchMusic(musicQuery)
                 addLog("→ $result")
-                webSocketManager.sendSystemText(result)
+                reportToolResult("$musicQuery 音乐搜索", result)
             }
         }
     }
