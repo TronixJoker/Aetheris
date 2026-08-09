@@ -1,1 +1,1 @@
-{"versionCode": 92, "versionName": "1.9.17", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.17.apk", "changelog": "修复模型缝隙透空问题：发现2505个顶点采样到透明纹理像素(分布在全身)，导致模型表面有透明洞可看到背景。将845个被采样的透明像素用周围颜色填充为不透明，模型表面不再透空。背景仍保持透明。模型朝向和色彩保持1.9.13状态不变。"}
+{"versionCode": 93, "versionName": "1.9.18", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.18.apk", "changelog": "缩小桌面宠物触摸范围：窗口宽度从160dp改为96dp(60%)，高度从160dp改为128dp(80%)，减少机器人周围空白区域的误触。模型和纹理保持1.9.17状态。"}
