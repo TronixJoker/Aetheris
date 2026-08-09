@@ -979,9 +979,13 @@
 
     move-object v7, v14
 
-    move v8, v2
+    # width = v2 * 3 / 5 (缩小触摸范围贴合机器人宽度)
+    mul-int/lit8 v8, v2, 0x3
+    div-int/lit8 v8, v8, 0x5
 
-    move v9, v2
+    # height = v2 * 4 / 5 (缩小触摸范围贴合机器人高度)
+    mul-int/lit8 v9, v2, 0x4
+    div-int/lit8 v9, v9, 0x5
 
     invoke-direct/range {v7 .. v12}, Landroid/view/WindowManager$LayoutParams;-><init>(IIIII)V
 
