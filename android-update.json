@@ -1,1 +1,1 @@
-{"versionCode": 93, "versionName": "1.9.18", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.18.apk", "changelog": "缩小桌面宠物触摸范围：窗口宽度从160dp改为96dp(60%)，高度从160dp改为128dp(80%)，减少机器人周围空白区域的误触。模型和纹理保持1.9.17状态。"}
+{"versionCode": 94, "versionName": "1.9.19", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.19.apk", "changelog": "锁定触摸范围到模型本身：在ACTION_DOWN时检测触摸点到窗口中心的距离，超出窗口中心50%区域(模型实际显示范围)的触摸不响应。窗口大小保持1.9.18(96x128dp)，模型显示大小不变。模型和纹理保持1.9.17状态。"}
