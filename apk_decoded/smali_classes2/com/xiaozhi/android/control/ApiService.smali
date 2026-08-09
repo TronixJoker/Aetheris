@@ -1533,7 +1533,9 @@
         }
     .end annotation
 
-    const-string v0, "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
+    invoke-static {}, Lcom/xiaozhi/android/config/ConfigManager;->getBilibiliSearchUrlSync()Ljava/lang/String;
+
+    move-result-object v0
 
     instance-of v1, p2, Lcom/xiaozhi/android/control/ApiService$searchBilibiliVideos$1;
 

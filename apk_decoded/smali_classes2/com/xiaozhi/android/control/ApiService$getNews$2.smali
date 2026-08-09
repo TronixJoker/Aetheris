@@ -176,7 +176,9 @@
 
     const-string v0, "select(...)"
 
-    const-string v1, "https://news.baidu.com/ns?word="
+    invoke-static {}, Lcom/xiaozhi/android/config/ConfigManager;->getNewsBaiduUrlSync()Ljava/lang/String;
+
+    move-result-object v1
 
     invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
 

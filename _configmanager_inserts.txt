@@ -1,0 +1,2611 @@
+===== KEY_FIELDS =====
+.field private static final KEY_WEATHER_API_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_WEATHER_CN_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_NEWS_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_STOCK_SINA_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_STOCK_SUGGEST_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_MUSIC_NETEASE_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_MUSIC_NETEASE_PLAY_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_BILIBILI_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_BILIBILI_VIEW_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_BILIBILI_PLAYURL_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_SEARCH_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_SEARCH_DUCKDUCKGO_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_WIKI_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+.field private static final KEY_TRANSLATE_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Landroidx/datastore/preferences/core/Preferences$Key<",
+            "Ljava/lang/String;",
+            ">;"
+        }
+    .end annotation
+.end field
+
+
+===== CLINIT_REGS =====
+    const-string v0, "weather_api_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_API_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "weather_cn_search_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_CN_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "news_baidu_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_NEWS_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "stock_sina_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SINA_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "stock_suggest_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SUGGEST_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "music_netease_search_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "music_netease_play_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_PLAY_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "bilibili_search_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "bilibili_view_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_VIEW_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "bilibili_playurl_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_PLAYURL_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "search_baidu_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "search_duckduckgo_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_DUCKDUCKGO_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "wiki_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WIKI_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    const-string v0, "translate_url"
+
+    invoke-static {v0}, Landroidx/datastore/preferences/core/PreferencesKeys;->stringKey(Ljava/lang/String;)Landroidx/datastore/preferences/core/Preferences$Key;
+
+    move-result-object v0
+
+    sput-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_TRANSLATE_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+
+===== ACCESS_BRIDGES =====
+.method public static final synthetic access$getKEY_WEATHER_API_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_API_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_WEATHER_CN_SEARCH_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_CN_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_NEWS_BAIDU_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_NEWS_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_STOCK_SINA_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SINA_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_STOCK_SUGGEST_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SUGGEST_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_MUSIC_NETEASE_SEARCH_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_MUSIC_NETEASE_PLAY_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_PLAY_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_BILIBILI_SEARCH_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_BILIBILI_VIEW_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_VIEW_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_BILIBILI_PLAYURL_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_PLAYURL_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_SEARCH_BAIDU_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_SEARCH_DUCKDUCKGO_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_DUCKDUCKGO_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_WIKI_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WIKI_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+.method public static final synthetic access$getKEY_TRANSLATE_URL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
+    .locals 1
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_TRANSLATE_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    return-object v0
+.end method
+
+
+===== GETTER_METHODS =====
+.method public final getWeatherApiUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherApiUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_API_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://wttr.in/"
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getWeatherCnSearchUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getWeatherCnSearchUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WEATHER_CN_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://so.weather.com.cn/wap/search.shtml?q="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getNewsBaiduUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getNewsBaiduUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_NEWS_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://news.baidu.com/ns?word="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getStockSinaUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSinaUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SINA_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://hq.sinajs.cn/list="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getStockSuggestUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getStockSuggestUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_STOCK_SUGGEST_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://suggest3.sinajs.cn/suggest/type=&key="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getMusicNeteaseSearchUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteaseSearchUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://music.163.com/api/search/get?s="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getMusicNeteasePlayUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getMusicNeteasePlayUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_MUSIC_NETEASE_PLAY_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://music.163.com/song/media/outer/url?id="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getBilibiliSearchUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliSearchUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_SEARCH_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getBilibiliViewUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliViewUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_VIEW_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://api.bilibili.com/x/web-interface/view?bvid="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getBilibiliPlayurlUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getBilibiliPlayurlUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_BILIBILI_PLAYURL_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://api.bilibili.com/x/player/playurl?bvid="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getSearchBaiduUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchBaiduUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_BAIDU_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://www.baidu.com/s?wd="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getSearchDuckDuckGoUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getSearchDuckDuckGoUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_SEARCH_DUCKDUCKGO_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://lite.duckduckgo.com/lite/?q="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getWikiUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getWikiUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_WIKI_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://zh.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles="
+
+    :cond_4
+    return-object p1
+.end method
+
+.method public final getTranslateUrl(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Ljava/lang/String;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    instance-of v0, p1, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p1
+
+    check-cast v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;
+
+    iget v1, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->label:I
+
+    const/high16 v2, -0x80000000
+
+    and-int/2addr v1, v2
+
+    if-eqz v1, :cond_0
+
+    iget p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->label:I
+
+    sub-int/2addr p1, v2
+
+    iput p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->label:I
+
+    goto :goto_0
+
+    :cond_0
+    new-instance v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;
+
+    invoke-direct {v0, p0, p1}, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;-><init>(Lcom/xiaozhi/android/config/ConfigManager;Lkotlin/coroutines/Continuation;)V
+
+    :goto_0
+    iget-object p1, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->result:Ljava/lang/Object;
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object v1
+
+    iget v2, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->label:I
+
+    const/4 v3, 0x1
+
+    if-eqz v2, :cond_2
+
+    if-ne v2, v3, :cond_1
+
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    goto :goto_1
+
+    :cond_1
+    new-instance p1, Ljava/lang/IllegalStateException;
+
+    const-string v0, "call to 'resume' before 'invoke' with coroutine"
+
+    invoke-direct {p1, v0}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
+
+    throw p1
+
+    :cond_2
+    invoke-static {p1}, Lkotlin/ResultKt;->throwOnFailure(Ljava/lang/Object;)V
+
+    iget-object p1, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {p1}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroidx/datastore/core/DataStore;->getData()Lkotlinx/coroutines/flow/Flow;
+
+    move-result-object p1
+
+    iput v3, v0, Lcom/xiaozhi/android/config/ConfigManager$getTranslateUrl$1;->label:I
+
+    invoke-static {p1, v0}, Lkotlinx/coroutines/flow/FlowKt;->first(Lkotlinx/coroutines/flow/Flow;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    if-ne p1, v1, :cond_3
+
+    return-object v1
+
+    :cond_3
+    :goto_1
+    check-cast p1, Landroidx/datastore/preferences/core/Preferences;
+
+    sget-object v0, Lcom/xiaozhi/android/config/ConfigManager;->KEY_TRANSLATE_URL:Landroidx/datastore/preferences/core/Preferences$Key;
+
+    invoke-virtual {p1, v0}, Landroidx/datastore/preferences/core/Preferences;->get(Landroidx/datastore/preferences/core/Preferences$Key;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    check-cast p1, Ljava/lang/String;
+
+    if-nez p1, :cond_4
+
+    const-string p1, "https://api.mymemory.translated.net/get?q="
+
+    :cond_4
+    return-object p1
+.end method
+
+
+===== SETTER_METHODS =====
+.method public final setWeatherApiUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setWeatherApiUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setWeatherApiUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setWeatherCnSearchUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setWeatherCnSearchUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setWeatherCnSearchUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setNewsBaiduUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setNewsBaiduUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setNewsBaiduUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setStockSinaUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setStockSinaUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setStockSinaUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setStockSuggestUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setStockSuggestUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setStockSuggestUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setMusicNeteaseSearchUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setMusicNeteaseSearchUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setMusicNeteaseSearchUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setMusicNeteasePlayUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setMusicNeteasePlayUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setMusicNeteasePlayUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setBilibiliSearchUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliSearchUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliSearchUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setBilibiliViewUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliViewUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliViewUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setBilibiliPlayurlUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliPlayurlUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setBilibiliPlayurlUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setSearchBaiduUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setSearchBaiduUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setSearchBaiduUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setSearchDuckDuckGoUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setSearchDuckDuckGoUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setSearchDuckDuckGoUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setWikiUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setWikiUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setWikiUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method
+
+.method public final setTranslateUrl(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+    .locals 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/lang/String;",
+            "Lkotlin/coroutines/Continuation<",
+            "-",
+            "Lkotlin/Unit;",
+            ">;)",
+            "Ljava/lang/Object;"
+        }
+    .end annotation
+
+    iget-object v0, p0, Lcom/xiaozhi/android/config/ConfigManager;->context:Landroid/content/Context;
+
+    invoke-static {v0}, Lcom/xiaozhi/android/config/ConfigManagerKt;->access$getDataStore(Landroid/content/Context;)Landroidx/datastore/core/DataStore;
+
+    move-result-object v0
+
+    new-instance v1, Lcom/xiaozhi/android/config/ConfigManager$setTranslateUrl$2;
+
+    const/4 v2, 0x0
+
+    invoke-direct {v1, p1, v2}, Lcom/xiaozhi/android/config/ConfigManager$setTranslateUrl$2;-><init>(Ljava/lang/String;Lkotlin/coroutines/Continuation;)V
+
+    check-cast v1, Lkotlin/jvm/functions/Function2;
+
+    invoke-static {v0, v1, p2}, Landroidx/datastore/preferences/core/PreferencesKt;->edit(Landroidx/datastore/core/DataStore;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+
+    move-result-object p1
+
+    invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
+
+    move-result-object p2
+
+    if-ne p1, p2, :cond_0
+
+    return-object p1
+
+    :cond_0
+    sget-object p1, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object p1
+.end method

@@ -174,7 +174,9 @@
 
     const-string v0, "\u3010\u5929\u6c14\u3011"
 
-    const-string v1, "https://wttr.in/"
+    invoke-static {}, Lcom/xiaozhi/android/config/ConfigManager;->getWeatherApiUrlSync()Ljava/lang/String;
+
+    move-result-object v1
 
     invoke-static {}, Lkotlin/coroutines/intrinsics/IntrinsicsKt;->getCOROUTINE_SUSPENDED()Ljava/lang/Object;
 

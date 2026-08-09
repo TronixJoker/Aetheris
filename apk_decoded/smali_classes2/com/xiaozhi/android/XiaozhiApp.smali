@@ -36,6 +36,8 @@
 # static fields
 .field public static final $stable:I = 0x8
 
+.field public static appContext:Landroid/content/Context;
+
 
 # instance fields
 .field private volatile lastViewModel:Lcom/xiaozhi/android/viewmodel/MainViewModel;
@@ -69,10 +71,12 @@
 .end method
 
 .method public onCreate()V
-    .locals 0
+    .locals 1
 
     .line 8
     invoke-super {p0}, Landroid/app/Application;->onCreate()V
+
+    sput-object p0, Lcom/xiaozhi/android/XiaozhiApp;->appContext:Landroid/content/Context;
 
     return-void
 .end method
