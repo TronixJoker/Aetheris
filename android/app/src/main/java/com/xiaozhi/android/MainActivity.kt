@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.xiaozhi.android.ui.screens.ApiManagementScreen
 import com.xiaozhi.android.ui.screens.MainScreen
 import com.xiaozhi.android.ui.screens.SettingsScreen
 import com.xiaozhi.android.ui.theme.XiaozhiTheme
@@ -95,7 +96,17 @@ class MainActivity : ComponentActivity() {
                         composable("settings") {
                             SettingsScreen(
                                 onNavigateBack = { navController.popBackStack() },
+                                onNavigateToApiManagement = {
+                                    navController.navigate("api_management")
+                                },
                                 viewModel = viewModel
+                            )
+                        }
+
+                        composable("api_management") {
+                            ApiManagementScreen(
+                                onNavigateBack = { navController.popBackStack() },
+                                context = viewModel.getApplication()
                             )
                         }
                     }

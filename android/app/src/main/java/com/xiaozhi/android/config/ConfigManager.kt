@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import java.util.UUID
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "xiaozhi_settings")
@@ -97,6 +100,15 @@ class ConfigManager(private val context: Context) {
         ),
     }
 
+    // ==================== 自定义 API 条目（用户可在管理页增删改） ====================
+    // 与内置 ApiKey 区分：内置的由 ApiService 代码引用，不可删除只能改 URL；
+    // 自定义的完全由用户管理，存储为 JSON 列表。
+    @Serializable
+    data class CustomApi(
+        val name: String,
+        val url: String,
+    )
+
     companion object {
         private val KEY_WEBSOCKET_URL = stringPreferencesKey("websocket_url")
         private val KEY_ACCESS_TOKEN = stringPreferencesKey("access_token")
@@ -107,6 +119,13 @@ class ConfigManager(private val context: Context) {
         private val KEY_ACTIVATED = stringPreferencesKey("activated")
         private val KEY_HMAC_KEY = stringPreferencesKey("hmac_key")
         private val KEY_SERIAL_NUMBER = stringPreferencesKey("serial_number")
+        private val KEY_CUSTOM_APIS = stringPreferencesKey("custom_apis")
+
+        // 自定义 API 列表的 JSON 序列化器与缓存
+        private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+        private val customApisCache: MutableList<CustomApi> = mutableListOf()
+        @Volatile
+        private var customApisLoaded = false
 
         const val DEFAULT_WS_URL = "wss://api.tenclass.net/xiaozhi/v1/"
         const val DEFAULT_OTA_URL = "https://api.tenclass.net/xiaozhi/ota/"
@@ -190,6 +209,56 @@ class ConfigManager(private val context: Context) {
                 prefs.remove(apiKey.prefKey)
                 apiUrlCache[apiKey] = apiKey.defaultUrl
             }
+        }
+    }
+
+    // ==================== 自定义 API 列表的读写 ====================
+
+    /** 读取全部自定义 API（首次读取后缓存）。 */
+    suspend fun getCustomApis(): List<CustomApi> {
+        if (customApisLoaded) return customApisCache.toList()
+        val raw = context.dataStore.data.first()[KEY_CUSTOM_APIS]
+        val list = if (raw.isNullOrBlank()) {
+            emptyList()
+        } else {
+            try {
+                json.decodeFromString(ListSerializer(CustomApi.serializer()), raw)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        synchronized(customApisCache) {
+            customApisCache.clear()
+            customApisCache.addAll(list)
+            customApisLoaded = true
+        }
+        return list
+    }
+
+    /** 整体写入自定义 API 列表（增删改都基于此），并刷新缓存。 */
+    suspend fun setCustomApis(list: List<CustomApi>) {
+        val raw = json.encodeToString(ListSerializer(CustomApi.serializer()), list)
+        context.dataStore.edit { it[KEY_CUSTOM_APIS] = raw }
+        synchronized(customApisCache) {
+            customApisCache.clear()
+            customApisCache.addAll(list)
+            customApisLoaded = true
+        }
+    }
+
+    /** 追加一个自定义 API。 */
+    suspend fun addCustomApi(name: String, url: String) {
+        val current = getCustomApis().toMutableList()
+        current.add(CustomApi(name = name.trim(), url = url.trim()))
+        setCustomApis(current)
+    }
+
+    /** 删除指定下标的自定义 API。 */
+    suspend fun removeCustomApi(index: Int) {
+        val current = getCustomApis().toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            setCustomApis(current)
         }
     }
 
