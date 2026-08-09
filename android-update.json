@@ -1,1 +1,1 @@
-{"versionCode": 90, "versionName": "1.9.15", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.15.apk", "changelog": "修复手臂/头部与身体连接处的白边黑里接缝：将连接区域(Y 0.1-0.7)内所有极端亮度顶点(白>220或黑<80)的UV重定向到中等灰度纹理区域，消除接缝色差。头部和脚部保持不变。"}
+{"versionCode": 91, "versionName": "1.9.16", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.16.apk", "changelog": "回退1.9.14/1.9.15的纹理破坏性修改，恢复1.9.13完整原始状态(头朝上+背景正确)。仅对连接处描边像素做轻微柔化(402个像素，保留70%描边感)，不改动模型几何和整体纹理。"}
