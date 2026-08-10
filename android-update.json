@@ -1,1 +1,1 @@
-{"versionCode": 102, "versionName": "1.9.27", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.27.apk", "changelog": "API 管理页面调整：\n1. 自定义 API 只保留添加（+），移除卡片上的删除按钮。\n2. 内置 API「编辑」按钮改为「删除」按钮，点击后删除自定义地址并恢复默认 URL。\n3. 移除内置 API 的展开编辑表单（地址输入框/保存/重置默认）。"}
+{"versionCode": 103, "versionName": "1.9.28", "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v1.9.28.apk", "changelog": "API 管理页面调整：\n1. 内置 API 恢复「编辑」按钮，点击后展开内容里显示「删除」按钮（删除自定义地址、恢复默认 URL）。\n2. 自定义 API 区标题去掉「删除」字样，改为「自定义 API（可添加）」。"}
