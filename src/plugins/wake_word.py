@@ -126,6 +126,15 @@ class WakeWordPlugin(Plugin):
                 logger.debug(f"唤醒词看门狗异常: {e}")
 
     async def stop(self) -> None:
+        # 先停看门狗，避免关闭期间它误判检测器死亡而尝试重启
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            self._watchdog_task = None
+
         if self.detector:
             try:
                 await self.detector.stop()
