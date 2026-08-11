@@ -376,6 +376,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val text = data["text"]?.jsonPrimitive?.content ?: ""
                     if (text.isNotEmpty()) {
                         addLog("用户: $text")
+                        // 收到识别结果后切到 THINKING：停止"聆听中"粒子，
+                        // 宠物显示思考动画，让用户知道"说完了，正在处理"
+                        _deviceState.value = DeviceState.THINKING
                         // 本地命令解析：直接识别常用语音命令并执行，不依赖服务器 MCP 工具调用
                         parseAndExecuteLocalCommand(text)
                     }
@@ -717,6 +720,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             DeviceState.SPEAKING -> interruptSpeaking()
             DeviceState.CONNECTING -> {
                 addLog("⏳ 正在连接中，请稍候...")
+            }
+            DeviceState.THINKING -> {
+                addLog("⏳ 正在思考中，请稍候...")
             }
         }
     }

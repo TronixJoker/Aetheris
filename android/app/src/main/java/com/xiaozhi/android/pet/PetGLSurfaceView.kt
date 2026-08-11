@@ -195,8 +195,10 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             val rnd = java.util.Random()
             for (i in 0 until particleCount) {
                 particleAngle[i] = rnd.nextFloat() * 360f
-                particleOrbitRadius[i] = 1.0f + rnd.nextFloat() * 0.8f
-                particleHeight[i] = (rnd.nextFloat() - 0.5f) * 2.0f
+                // 缩小环绕半径，让粒子更贴近模型，视觉范围更紧凑
+                particleOrbitRadius[i] = 0.55f + rnd.nextFloat() * 0.35f
+                // 缩小高度分布范围
+                particleHeight[i] = (rnd.nextFloat() - 0.5f) * 1.0f
                 particleSpeed[i] = 30f + rnd.nextFloat() * 60f
                 particlePhase[i] = rnd.nextFloat() * (Math.PI.toFloat() * 2f)
             }
@@ -223,29 +225,29 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             for (i in 0 until particleCount) {
                 when (state) {
                     STATE_LISTENING -> {
-                        // 环绕旋转 + 轻微脉动
+                        // 环绕旋转 + 轻微脉动（缩小脉动幅度，粒子更紧凑）
                         particleAngle[i] += particleSpeed[i] * 0.016f
                         if (particleAngle[i] > 360f) particleAngle[i] -= 360f
                         val pulseR = particleOrbitRadius[i] *
-                            (1f + 0.15f * Math.sin(timeMs * 0.003 + particlePhase[i]).toFloat())
+                            (1f + 0.08f * Math.sin(timeMs * 0.003 + particlePhase[i]).toFloat())
                         val a = Math.toRadians(particleAngle[i].toDouble())
                         particlePositions[i * 3] = (pulseR * Math.cos(a)).toFloat()
                         particlePositions[i * 3 + 1] = particleHeight[i] +
-                            0.15f * Math.sin(timeMs * 0.004 + particlePhase[i]).toFloat()
+                            0.1f * Math.sin(timeMs * 0.004 + particlePhase[i]).toFloat()
                         particlePositions[i * 3 + 2] = (pulseR * Math.sin(a)).toFloat()
                     }
                     STATE_SPEAKING -> {
-                        // 向上飘散 + 向外扩散，到顶后重生
+                        // 向上飘散 + 向外扩散（缩小扩散系数和重生高度，范围更紧凑）
                         particleHeight[i] += particleSpeed[i] * 0.012f
                         particleAngle[i] += particleSpeed[i] * 0.3f
                         if (particleAngle[i] > 360f) particleAngle[i] -= 360f
-                        val expandR = particleOrbitRadius[i] + (particleHeight[i] + 1f) * 0.25f
+                        val expandR = particleOrbitRadius[i] + (particleHeight[i] + 1f) * 0.12f
                         val a = Math.toRadians(particleAngle[i].toDouble())
                         particlePositions[i * 3] = (expandR * Math.cos(a)).toFloat()
                         particlePositions[i * 3 + 1] = particleHeight[i]
                         particlePositions[i * 3 + 2] = (expandR * Math.sin(a)).toFloat()
-                        if (particleHeight[i] > 1.5f) {
-                            particleHeight[i] = -1.2f
+                        if (particleHeight[i] > 1.0f) {
+                            particleHeight[i] = -0.8f
                             particleAngle[i] = Math.random().toFloat() * 360f
                         }
                     }
@@ -265,7 +267,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 else -> gl.glColor4f(1f, 1f, 1f, 0.8f)
             }
 
-            gl.glPointSize(8f)
+            gl.glPointSize(5f)
             gl.glDrawArrays(GL10.GL_POINTS, 0, particleCount)
 
             // 恢复 GL 状态

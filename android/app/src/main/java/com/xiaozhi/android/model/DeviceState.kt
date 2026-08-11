@@ -1,7 +1,7 @@
 package com.xiaozhi.android.model
 
 enum class DeviceState {
-    IDLE, CONNECTING, LISTENING, SPEAKING
+    IDLE, CONNECTING, LISTENING, SPEAKING, THINKING
 }
 
 enum class ListeningMode {

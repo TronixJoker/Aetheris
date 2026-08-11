@@ -166,6 +166,7 @@ class FloatingPetService : Service() {
                     DeviceState.LISTENING -> PetGLSurfaceView.PetRenderer.STATE_LISTENING
                     DeviceState.SPEAKING -> PetGLSurfaceView.PetRenderer.STATE_SPEAKING
                     DeviceState.CONNECTING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
+                    DeviceState.THINKING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
                     else -> PetGLSurfaceView.PetRenderer.STATE_IDLE
                 }
                 Log.d(TAG, "Pet state -> $petState (deviceState=$state)")
