@@ -377,6 +377,7 @@ fun EmotionDisplay(
             DeviceState.LISTENING -> XiaozhiGreen
             DeviceState.SPEAKING -> XiaozhiBlue
             DeviceState.CONNECTING -> XiaozhiOrange
+            DeviceState.THINKING -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             DeviceState.IDLE -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
         },
         label = "emotion_color"
