@@ -53,11 +53,25 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         private var timeMs: Long = 0L
         private var textureId: Int = 0
 
+        // === 粒子系统：在模型周边显示动态粒子作为状态反馈（不修改模型本身）===
+        private val particleCount = 42
+        private val particleAngle = FloatArray(particleCount)
+        private val particleOrbitRadius = FloatArray(particleCount)
+        private val particleHeight = FloatArray(particleCount)
+        private val particleSpeed = FloatArray(particleCount)
+        private val particlePhase = FloatArray(particleCount)
+        private val particlePositions = FloatArray(particleCount * 3)
+        private val particleBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(particleCount * 3 * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
+
         override fun onSurfaceCreated(gl: GL10, config: EGLConfig) {
             // 与 1.9.19 一致：仅开深度测试 + 2D 纹理，不设光照
             gl.glEnable(GL10.GL_DEPTH_TEST)
             gl.glEnable(GL10.GL_TEXTURE_2D)
             loadTexture(gl)
+            initParticles()
         }
 
         /**
@@ -135,6 +149,11 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             }
 
             drawModel(gl)
+
+            // 粒子在模型之后绘制，不修改模型本身
+            if (state == STATE_LISTENING || state == STATE_SPEAKING) {
+                drawParticles(gl)
+            }
         }
 
         private fun drawModel(gl: GL10) {
@@ -167,6 +186,93 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
                 gl.glDisable(GL10.GL_TEXTURE_2D)
             }
+        }
+
+        /**
+         * 初始化粒子参数（随机分布角度、半径、高度、速度）。
+         */
+        private fun initParticles() {
+            val rnd = java.util.Random()
+            for (i in 0 until particleCount) {
+                particleAngle[i] = rnd.nextFloat() * 360f
+                particleOrbitRadius[i] = 1.0f + rnd.nextFloat() * 0.8f
+                particleHeight[i] = (rnd.nextFloat() - 0.5f) * 2.0f
+                particleSpeed[i] = 30f + rnd.nextFloat() * 60f
+                particlePhase[i] = rnd.nextFloat() * (Math.PI.toFloat() * 2f)
+            }
+        }
+
+        /**
+         * 绘制状态粒子（在模型周边，不修改模型本身）。
+         * - LISTENING：蓝色粒子环绕模型旋转，表示正在聆听用户说话
+         * - SPEAKING：绿色粒子向上飘散，表示 AI 正在说话
+         */
+        private fun drawParticles(gl: GL10) {
+            // 重置到世界空间（与模型相同的摄像机，但不应用模型动画）
+            gl.glMatrixMode(GL10.GL_MODELVIEW)
+            gl.glLoadIdentity()
+            gl.glTranslatef(0f, 0f, -3.0f)
+
+            // 粒子作为反馈始终可见，禁用深度测试避免被模型遮挡
+            gl.glDisable(GL10.GL_DEPTH_TEST)
+            gl.glDisable(GL10.GL_TEXTURE_2D)
+            gl.glEnable(GL10.GL_POINT_SMOOTH)
+            gl.glHint(GL10.GL_POINT_SMOOTH_HINT, GL10.GL_NICEST)
+
+            particleBuffer.clear()
+            for (i in 0 until particleCount) {
+                when (state) {
+                    STATE_LISTENING -> {
+                        // 环绕旋转 + 轻微脉动
+                        particleAngle[i] += particleSpeed[i] * 0.016f
+                        if (particleAngle[i] > 360f) particleAngle[i] -= 360f
+                        val pulseR = particleOrbitRadius[i] *
+                            (1f + 0.15f * Math.sin(timeMs * 0.003 + particlePhase[i]).toFloat())
+                        val a = Math.toRadians(particleAngle[i].toDouble())
+                        particlePositions[i * 3] = (pulseR * Math.cos(a)).toFloat()
+                        particlePositions[i * 3 + 1] = particleHeight[i] +
+                            0.15f * Math.sin(timeMs * 0.004 + particlePhase[i]).toFloat()
+                        particlePositions[i * 3 + 2] = (pulseR * Math.sin(a)).toFloat()
+                    }
+                    STATE_SPEAKING -> {
+                        // 向上飘散 + 向外扩散，到顶后重生
+                        particleHeight[i] += particleSpeed[i] * 0.012f
+                        particleAngle[i] += particleSpeed[i] * 0.3f
+                        if (particleAngle[i] > 360f) particleAngle[i] -= 360f
+                        val expandR = particleOrbitRadius[i] + (particleHeight[i] + 1f) * 0.25f
+                        val a = Math.toRadians(particleAngle[i].toDouble())
+                        particlePositions[i * 3] = (expandR * Math.cos(a)).toFloat()
+                        particlePositions[i * 3 + 1] = particleHeight[i]
+                        particlePositions[i * 3 + 2] = (expandR * Math.sin(a)).toFloat()
+                        if (particleHeight[i] > 1.5f) {
+                            particleHeight[i] = -1.2f
+                            particleAngle[i] = Math.random().toFloat() * 360f
+                        }
+                    }
+                }
+                particleBuffer.put(particlePositions[i * 3])
+                particleBuffer.put(particlePositions[i * 3 + 1])
+                particleBuffer.put(particlePositions[i * 3 + 2])
+            }
+            particleBuffer.position(0)
+
+            gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
+            gl.glVertexPointer(3, GL10.GL_FLOAT, 0, particleBuffer)
+
+            when (state) {
+                STATE_LISTENING -> gl.glColor4f(0.2f, 0.6f, 1.0f, 0.85f)
+                STATE_SPEAKING -> gl.glColor4f(0.3f, 0.9f, 0.4f, 0.85f)
+                else -> gl.glColor4f(1f, 1f, 1f, 0.8f)
+            }
+
+            gl.glPointSize(8f)
+            gl.glDrawArrays(GL10.GL_POINTS, 0, particleCount)
+
+            // 恢复 GL 状态
+            gl.glColor4f(1f, 1f, 1f, 1f)
+            gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
+            gl.glDisable(GL10.GL_POINT_SMOOTH)
+            gl.glEnable(GL10.GL_DEPTH_TEST)
         }
 
         companion object {

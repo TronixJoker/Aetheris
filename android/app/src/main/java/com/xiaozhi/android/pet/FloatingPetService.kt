@@ -5,9 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
@@ -20,13 +18,11 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.xiaozhi.android.MainActivity
 import com.xiaozhi.android.XiaozhiApp
 import com.xiaozhi.android.model.DeviceState
-import com.xiaozhi.android.network.WebSocketManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,11 +54,6 @@ class FloatingPetService : Service() {
     private var windowManager: WindowManager? = null
     private var petView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
-    // 状态指示条：显示「正在聆听...」「AI 正在说话...」等，让用户明确知道当前状态
-    private var statusView: TextView? = null
-    private var statusLayoutParams: WindowManager.LayoutParams? = null
-    // 宠物下方状态条的垂直间距（dp）
-    private val statusMarginTopDp = 4f
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var stateJob: Job? = null
@@ -115,9 +106,9 @@ class FloatingPetService : Service() {
         val dm = resources.displayMetrics
         val screenWidth = dm.widthPixels
         val screenHeight = dm.heightPixels
-        // 3D 宠物尺寸：160dp（放大窗口以充分展示精细模型细节）
+        // 3D 宠物尺寸：120dp（缩小触摸范围，模型仍清晰可见）
         val petSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, 160f, dm
+            TypedValue.COMPLEX_UNIT_DIP, 120f, dm
         ).toInt()
         val posX = (screenWidth - petSize) / 2
         val posY = screenHeight / 4
@@ -151,9 +142,7 @@ class FloatingPetService : Service() {
             petVisible = true
             Log.i(TAG, "3D Pet shown successfully")
             toast("桌面宠物已显示，点击直接对话，长按隐藏")
-            // 创建并添加状态指示条（位于宠物正下方）
-            addStatusOverlay(posX, posY, petSize, type)
-            // 开始监听 ViewModel 状态
+            // 开始监听 ViewModel 状态，驱动粒子效果
             startStateObserving()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show pet: ${e.message}", e)
@@ -162,87 +151,7 @@ class FloatingPetService : Service() {
     }
 
     /**
-     * 在宠物正下方添加一个状态指示条，文字与配色与 2D 界面 [com.xiaozhi.android.ui.screens.StatusText] 保持一致。
-     * 解决 3D 模型动画太微弱、用户看不出「在听」还是「在说」的问题。
-     */
-    private fun addStatusOverlay(posX: Int, posY: Int, petSize: Int, type: Int) {
-        val dp = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1f, resources.displayMetrics)
-        val tv = TextView(this).apply {
-            text = "点击对话"
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            gravity = Gravity.CENTER
-            val padH = (12f * dp).toInt()
-            val padV = (5f * dp).toInt()
-            setPadding(padH, padV, padH, padV)
-            // 圆角半透明背景，初始为 IDLE 灰色
-            background = GradientDrawable().apply {
-                cornerRadius = 14f * dp
-                setColor(Color.parseColor("#80000000"))
-            }
-        }
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 水平居中于宠物下方；先给一个估算 x，addView 后用真实宽度修正
-            x = posX
-            y = posY + petSize + (statusMarginTopDp * dp).toInt()
-        }
-        try {
-            windowManager?.addView(tv, lp)
-            statusView = tv
-            statusLayoutParams = lp
-            // measure 后用真实宽度水平居中
-            tv.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-            val statusW = tv.measuredWidth.coerceAtLeast(1)
-            lp.x = posX + (petSize - statusW) / 2
-            windowManager?.updateViewLayout(tv, lp)
-        } catch (e: Exception) {
-            Log.w(TAG, "addStatusOverlay failed: ${e.message}")
-            statusView = null
-            statusLayoutParams = null
-        }
-    }
-
-    /**
-     * 根据设备状态更新状态指示条的文案、配色与可见性。
-     */
-    private fun updateStatusOverlay(state: DeviceState, wsConnected: Boolean) {
-        val tv = statusView ?: return
-        val lp = statusLayoutParams ?: return
-        val (text, color) = when {
-            !wsConnected -> "正在连接服务器..." to Color.parseColor("#80FF9800")
-            state == DeviceState.LISTENING -> "正在聆听..." to Color.parseColor("#802196F3")
-            state == DeviceState.SPEAKING -> "AI 正在说话..." to Color.parseColor("#804CAF50")
-            state == DeviceState.CONNECTING -> "正在连接..." to Color.parseColor("#80FF9800")
-            else -> "点击对话" to Color.parseColor("#80000000")
-        }
-        tv.text = text
-        (tv.background as? GradientDrawable)?.setColor(color)
-        // 文案长度变化后重新测量并水平居中于宠物下方
-        tv.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val statusW = tv.measuredWidth.coerceAtLeast(1)
-        val petLp = layoutParams ?: return
-        val petSize = petLp.width
-        lp.x = petLp.x + (petSize - statusW) / 2
-        lp.y = petLp.y + petSize + TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, statusMarginTopDp, resources.displayMetrics
-        ).toInt()
-        try {
-            windowManager?.updateViewLayout(tv, lp)
-        } catch (e: Exception) {
-            Log.w(TAG, "updateStatusOverlay: ${e.message}")
-        }
-    }
-
-    /**
-     * 监听 ViewModel 的设备状态，同步更新 3D 宠物的动画状态与状态指示条。
+     * 监听 ViewModel 的设备状态，同步驱动 3D 宠物的动画与粒子效果。
      */
     private fun startStateObserving() {
         val viewModel = (application as? XiaozhiApp)?.lastViewModel
@@ -252,25 +161,15 @@ class FloatingPetService : Service() {
         }
         stateJob?.cancel()
         stateJob = serviceScope.launch {
-            // 同时监听设备状态与 WebSocket 连接状态，任一变化都刷新状态条
-            launch {
-                viewModel.deviceState.collect { state ->
-                    val petState = when (state) {
-                        DeviceState.LISTENING -> PetGLSurfaceView.PetRenderer.STATE_LISTENING
-                        DeviceState.SPEAKING -> PetGLSurfaceView.PetRenderer.STATE_SPEAKING
-                        DeviceState.CONNECTING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
-                        else -> PetGLSurfaceView.PetRenderer.STATE_IDLE
-                    }
-                    Log.d(TAG, "Pet state -> $petState (deviceState=$state)")
-                    (petView as? PetGLSurfaceView)?.setState(petState)
-                    updateStatusOverlay(state, viewModel.webSocketManager.connectionState.value == WebSocketManager.ConnectionState.CONNECTED)
+            viewModel.deviceState.collect { state ->
+                val petState = when (state) {
+                    DeviceState.LISTENING -> PetGLSurfaceView.PetRenderer.STATE_LISTENING
+                    DeviceState.SPEAKING -> PetGLSurfaceView.PetRenderer.STATE_SPEAKING
+                    DeviceState.CONNECTING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
+                    else -> PetGLSurfaceView.PetRenderer.STATE_IDLE
                 }
-            }
-            launch {
-                viewModel.webSocketManager.connectionState.collect { wsState ->
-                    val connected = wsState == WebSocketManager.ConnectionState.CONNECTED
-                    updateStatusOverlay(viewModel.deviceState.value, connected)
-                }
+                Log.d(TAG, "Pet state -> $petState (deviceState=$state)")
+                (petView as? PetGLSurfaceView)?.setState(petState)
             }
         }
         Log.i(TAG, "State observing started")
@@ -279,17 +178,10 @@ class FloatingPetService : Service() {
     private fun hidePet() {
         stateJob?.cancel()
         try {
-            statusView?.let { windowManager?.removeView(it) }
-        } catch (e: Exception) {
-            Log.w(TAG, "removeView status: ${e.message}")
-        }
-        try {
             petView?.let { windowManager?.removeView(it) }
         } catch (e: Exception) {
             Log.w(TAG, "removeView: ${e.message}")
         }
-        statusView = null
-        statusLayoutParams = null
         petView = null
         petVisible = false
         Log.i(TAG, "Pet hidden")
@@ -334,19 +226,6 @@ class FloatingPetService : Service() {
                         layoutParams?.y = initialY + dy.toInt()
                         try {
                             windowManager?.updateViewLayout(view, layoutParams)
-                        } catch (_: Exception) {}
-                        // 状态条跟随宠物移动
-                        val petLp = layoutParams ?: return@setOnTouchListener true
-                        val sLp = statusLayoutParams ?: return@setOnTouchListener true
-                        val tv = statusView ?: return@setOnTouchListener true
-                        val petSize = petLp.width
-                        val statusW = tv.width.coerceAtLeast(1)
-                        sLp.x = petLp.x + (petSize - statusW) / 2
-                        sLp.y = petLp.y + petSize + TypedValue.applyDimension(
-                            TypedValue.COMPLEX_UNIT_DIP, statusMarginTopDp, resources.displayMetrics
-                        ).toInt()
-                        try {
-                            windowManager?.updateViewLayout(tv, sLp)
                         } catch (_: Exception) {}
                     }
                     true
