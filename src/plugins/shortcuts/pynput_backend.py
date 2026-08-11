@@ -188,10 +188,14 @@ class PynputShortcutBackend(ShortcutBackend):
     def _match_shortcut(
         self, config: ShortcutConfig, ctrl: bool, alt: bool, shift: bool, cmd: bool
     ) -> bool:
-        """检查是否匹配快捷键配置."""
+        """检查是否严格匹配快捷键配置.
+
+        严格匹配：配置中声明的修饰键必须按下，且其他修饰键必须未按下。
+        否则 ctrl+w 会在 ctrl+shift+w 时误触发，与系统其他组合冲突。
+        """
         modifier = config.modifier.lower()
 
-        # 检查修饰键
+        # 配置要求的修饰键必须按下
         if modifier == "ctrl" and not ctrl:
             return False
         if modifier == "alt" and not alt:
@@ -199,6 +203,16 @@ class PynputShortcutBackend(ShortcutBackend):
         if modifier == "shift" and not shift:
             return False
         if modifier == "cmd" and not cmd:
+            return False
+
+        # 未声明的修饰键必须未按下，避免组合误触发
+        if modifier != "ctrl" and ctrl:
+            return False
+        if modifier != "alt" and alt:
+            return False
+        if modifier != "shift" and shift:
+            return False
+        if modifier != "cmd" and cmd:
             return False
 
         # 检查主键

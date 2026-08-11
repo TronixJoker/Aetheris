@@ -350,6 +350,15 @@ class ServiceContainer:
 
     async def _on_network_error(self, error_message: str = None) -> None:
         self.state.set_keep_listening(False)
+        # 网络断开后回到 IDLE，避免 UI 停留在"聆听中/说话中"误导用户
+        if not self.state.is_idle():
+            await self.state.set_device_state(DeviceState.IDLE)
+        # 透传错误描述给 UI（UIPlugin 也会收到 NETWORK_ERROR 并显示"未连接"）
+        if error_message:
+            await self.event_bus.emit(
+                Events.UI_UPDATE_STATUS,
+                {"status": "未连接", "connected": False, "message": str(error_message)},
+            )
 
     async def _on_device_state_changed(self, data: dict) -> None:
         new_state = data.get("new_state")
@@ -377,6 +386,10 @@ class ServiceContainer:
             logger.error(f"处理 JSON 消息失败: {e}")
 
     async def _handle_tts_start(self) -> None:
+        # 用户刚刚中止过语音输出，丢弃迟到的 tts/start，避免"叫停后又响起来"
+        if self._aborted:
+            logger.debug("已中止状态，忽略迟到的 tts/start")
+            return
         if (
             self.state.keep_listening
             and self.state.listening_mode == ListeningMode.REALTIME
@@ -409,12 +422,31 @@ class ServiceContainer:
         if self.protocol.is_audio_channel_opened():
             return True
 
+        # 连接期间给用户视觉反馈，避免"按了没反应"
+        await self.event_bus.emit(
+            Events.UI_UPDATE_STATUS, {"status": "连接中...", "connected": False}
+        )
+
         opened = await self.protocol.connect()
         if opened:
             await self.plugins.notify_protocol_connected(self.protocol.protocol)
+        else:
+            # 连接失败要明确告知用户，避免静默 no-op
+            await self.event_bus.emit(
+                Events.NETWORK_ERROR, "连接失败，请检查网络或服务端配置"
+            )
         return opened
 
     async def start_listening(self, mode: ListeningMode) -> None:
+        # 幂等保护：已在同模式监听时跳过，避免双击/唤醒词连发导致重复下发
+        if (
+            self.state.is_listening()
+            and self.state.listening_mode == mode
+            and self.protocol.is_audio_channel_opened()
+        ):
+            logger.debug(f"已在 {mode} 监听中，跳过重复请求")
+            return
+
         ok = await self.connect_protocol()
         if not ok:
             return
@@ -430,6 +462,7 @@ class ServiceContainer:
         await self.state.set_device_state(DeviceState.IDLE)
 
     async def start_listening_manual(self) -> None:
+        # 手动模式不与其它模式互斥（手动可打断自动），不做同模式幂等
         ok = await self.connect_protocol()
         if not ok:
             return
@@ -449,15 +482,24 @@ class ServiceContainer:
         await self.state.set_device_state(DeviceState.IDLE)
 
     async def start_auto_conversation(self) -> None:
-        ok = await self.connect_protocol()
-        if not ok:
-            return
-
+        # 幂等保护：已在自动模式监听时跳过
         mode = (
             ListeningMode.REALTIME
             if self.state.aec_enabled
             else ListeningMode.AUTO_STOP
         )
+        if (
+            self.state.is_listening()
+            and self.state.listening_mode == mode
+            and self.protocol.is_audio_channel_opened()
+        ):
+            logger.debug(f"已在 {mode} 监听中，跳过重复请求")
+            return
+
+        ok = await self.connect_protocol()
+        if not ok:
+            return
+
         self.state.set_listening_mode(mode)
         self.state.set_keep_listening(True)
 

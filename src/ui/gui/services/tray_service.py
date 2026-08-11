@@ -69,9 +69,11 @@ class TrayService(QObject):
 
             self._tray.setContextMenu(self._menu)
 
-            # 双击激活
+            # 单击/双击激活：单击是 Windows 习惯，双击是 macOS/Linux 习惯，两者都支持
             self._tray.activated.connect(
-                lambda reason: on_show() if reason == QSystemTrayIcon.DoubleClick else None
+                lambda reason: on_show()
+                if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick)
+                else None
             )
 
             self._tray.show()

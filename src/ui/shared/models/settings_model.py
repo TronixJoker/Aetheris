@@ -89,14 +89,22 @@ class SettingsModel(BaseModel):
         return value
 
     def _set_value(self, path: str, value: Any):
-        """设置配置值，支持点号分隔的路径."""
+        """设置配置值，支持点号分隔的路径.
+
+        值未变化时跳过 settingsChanged 信号发射，避免每个字符输入都触发
+        全部 ~40 个 Property getter 重算（其中设备列表 getter 是 O(n)），
+        显著缓解设置页输入卡顿。
+        """
         keys = path.split(".")
         config = self._config
         for key in keys[:-1]:
             if key not in config:
                 config[key] = {}
             config = config[key]
-        config[keys[-1]] = value
+        last_key = keys[-1]
+        if config.get(last_key) == value:
+            return
+        config[last_key] = value
         self.settingsChanged.emit()
 
     @Slot()

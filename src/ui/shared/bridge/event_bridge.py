@@ -36,6 +36,12 @@ class EventBridge(QObject):
         self._event_bus = event_bus
         self._task_manager = task_manager
         self._activation_code_getter: Callable[[], str] | None = None
+        # 托盘是否可用，决定关闭按钮是"最小化到托盘"还是"退出"
+        self._tray_available: bool = False
+
+    def set_tray_available(self, available: bool) -> None:
+        """由 ViewManager 在托盘初始化后设置，决定关闭按钮行为."""
+        self._tray_available = bool(available)
 
     def _emit_event(self, event: str, data=None):
         """安全地发射 EventBus 事件，在 Qt 主线程中调度到 asyncio loop."""
@@ -110,6 +116,11 @@ class EventBridge(QObject):
         """打开设置窗口 - 直接发射信号到 QML."""
         logger.debug("EventBridge: 打开设置窗口")
         self.showSettingsWindow.emit()
+
+    @Slot(result=bool)
+    def isTrayAvailable(self) -> bool:
+        """供 QML 查询托盘是否可用，决定关闭按钮行为."""
+        return self._tray_available
 
     # ========== 激活相关 Slots ==========
 

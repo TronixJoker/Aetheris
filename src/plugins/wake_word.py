@@ -3,9 +3,11 @@
 检测唤醒词并触发对话。
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from src.constants.constants import AbortReason
+from src.core.event_bus import Events
 from src.logging import get_logger
 from src.plugins.base import Plugin
 
@@ -13,6 +15,8 @@ if TYPE_CHECKING:
     from src.bootstrap.protocols import PluginCommands, PluginContext
 
 logger = get_logger()
+
+WATCHDOG_CHECK_INTERVAL = 10  # 看门狗检查间隔（秒）
 
 
 class WakeWordPlugin(Plugin):
@@ -23,6 +27,7 @@ class WakeWordPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__()
         self.detector = None
+        self._watchdog_task = None
 
     @property
     def _audio_plugin(self):
@@ -32,7 +37,6 @@ class WakeWordPlugin(Plugin):
     async def setup(self, ctx: "PluginContext", cmd: "PluginCommands") -> None:
         await super().setup(ctx, cmd)
         # 订阅配置变更事件（轻量，不加载模型）
-        from src.core.event_bus import Events
         ctx.event_bus.on(Events.CONFIG_CHANGED, self._on_config_changed)
 
     async def _on_config_changed(self, data=None):
@@ -58,11 +62,68 @@ class WakeWordPlugin(Plugin):
                 logger.warning("未找到 audio_codec，无法启动唤醒词检测")
                 return
             await self.detector.start(self._audio_plugin.codec)
+
+            # 启动看门狗：检测循环异常退出后自动重启，避免用户静默失去唤醒能力
+            if self._watchdog_task is None or self._watchdog_task.done():
+                self._watchdog_task = self._cmd.spawn(
+                    self._watchdog_loop(), name="wake_word:watchdog"
+                )
         except ImportError as e:
             logger.error(f"无法导入唤醒词检测器: {e}")
             self.detector = None
         except Exception as e:
             logger.error(f"启动唤醒词检测器失败: {e}", exc_info=True)
+
+    async def _watchdog_loop(self) -> None:
+        """周期性检查唤醒词检测循环是否死亡，若死亡则重启.
+
+        检测循环在累计 MAX_ERRORS 次错误后会 break 退出，但 _running 仍为 True，
+        导致用户静默失去唤醒能力。看门狗负责发现并恢复这种状态。
+        """
+        while True:
+            try:
+                await asyncio.sleep(WATCHDOG_CHECK_INTERVAL)
+                detector = self.detector
+                if detector is None:
+                    continue
+                # 检测任务已结束但仍标记为 running 且不在停止流程中 → 异常退出
+                task = getattr(detector, "_detection_task", None)
+                if (
+                    getattr(detector, "_running", False)
+                    and not getattr(detector, "_stopping", False)
+                    and (task is None or task.done())
+                ):
+                    logger.warning("唤醒词检测循环已死亡，尝试重启...")
+                    try:
+                        await detector.stop()
+                    except Exception as e:
+                        logger.debug(f"重启前 stop 失败: {e}")
+
+                    codec = (
+                        self._audio_plugin.codec
+                        if self._audio_plugin
+                        else None
+                    )
+                    if codec is None:
+                        logger.warning("无 audio codec，无法重启唤醒词检测")
+                        continue
+
+                    ok = await detector.start(codec)
+                    if ok:
+                        logger.info("唤醒词检测循环已重启")
+                        try:
+                            await self._ctx.event_bus.emit(
+                                Events.UI_UPDATE_STATUS,
+                                {"status": "唤醒词已恢复", "connected": True},
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        logger.error("唤醒词检测循环重启失败")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"唤醒词看门狗异常: {e}")
 
     async def stop(self) -> None:
         if self.detector:

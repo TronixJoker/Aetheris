@@ -155,7 +155,20 @@ class MacOSShortcutBackend(ShortcutBackend):
         return event
 
     def _check_hotkey(self, keycode: int, flags: int) -> None:
-        """检查是否匹配已注册的热键."""
+        """检查是否严格匹配已注册的热键.
+
+        严格匹配：在四个标准修饰键 (cmd/ctrl/alt/shift) 中，实际按下的必须
+        等于配置声明的，避免 ctrl+w 在 ctrl+shift+w 时误触发。
+        """
+        # 四个标准修饰键的并集掩码
+        all_modifiers_mask = (
+            Quartz.kCGEventFlagMaskCommand
+            | Quartz.kCGEventFlagMaskControl
+            | Quartz.kCGEventFlagMaskAlternate
+            | Quartz.kCGEventFlagMaskShift
+        )
+        actual_modifiers = flags & all_modifiers_mask
+
         for name, config in self._shortcuts.items():
             # 获取期望的键码
             expected_keycode = KEYCODE_MAP.get(config.key.lower())
@@ -170,8 +183,8 @@ class MacOSShortcutBackend(ShortcutBackend):
             if expected_modifier == 0:
                 continue
 
-            # 检查修饰键是否匹配（只检查期望的修饰键是否按下）
-            if flags & expected_modifier:
+            # 严格比较：实际按下的修饰键集合必须恰好等于配置声明的
+            if actual_modifiers == expected_modifier:
                 logger.debug(f"触发快捷键: {name}")
                 self._run_callback(name)
 

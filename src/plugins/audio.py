@@ -8,6 +8,7 @@ import os
 from typing import TYPE_CHECKING, Optional
 
 from src.audio_codecs.audio_codec import AudioCodec
+from src.core.event_bus import Events
 from src.logging import get_logger
 from src.plugins.base import Plugin
 
@@ -27,12 +28,19 @@ class AudioPlugin(Plugin):
         super().__init__()
         self.codec: Optional[AudioCodec] = None
         self._send_sem = asyncio.Semaphore(MAX_CONCURRENT_AUDIO_SENDS)
+        # 静音期使用单调递增 token 防止并发状态切换时旧任务把标志提前清掉
+        self._silence_token = 0
         self._in_silence_period = False
 
     async def setup(self, ctx: "PluginContext", cmd: "PluginCommands") -> None:
         await super().setup(ctx, cmd)
 
         if os.getenv("XIAOZHI_DISABLE_AUDIO") == "1":
+            logger.warning("音频已通过 XIAOZHI_DISABLE_AUDIO=1 禁用")
+            await ctx.event_bus.emit(
+                Events.UI_UPDATE_STATUS,
+                {"status": "音频已禁用", "connected": False},
+            )
             return
 
         try:
@@ -46,12 +54,19 @@ class AudioPlugin(Plugin):
             music_player.set_audio_codec(self.codec)
 
             # 订阅配置变更事件
-            from src.core.event_bus import Events
             ctx.event_bus.on(Events.CONFIG_CHANGED, self._on_config_changed)
 
         except Exception as e:
             logger.error(f"音频插件初始化失败: {e}", exc_info=True)
             self.codec = None
+            # 通知 UI：音频不可用，否则用户听不到声音又不知道原因
+            try:
+                await ctx.event_bus.emit(
+                    Events.UI_UPDATE_STATUS,
+                    {"status": "音频设备不可用", "connected": False},
+                )
+            except Exception:
+                pass
 
     async def _on_config_changed(self, data=None):
         """配置变更时重新加载音频设备."""
@@ -69,11 +84,16 @@ class AudioPlugin(Plugin):
         from src.constants.constants import DeviceState
 
         if state == DeviceState.LISTENING:
+            # 用 token 防止并发状态切换时旧任务把标志提前清掉，
+            # 否则快速 LISTENING→IDLE→LISTENING 切换会让静音期失效，TTS 尾音/按钮回声漏入麦
+            self._silence_token += 1
+            my_token = self._silence_token
             self._in_silence_period = True
             try:
                 await asyncio.sleep(0.2)
             finally:
-                self._in_silence_period = False
+                if my_token == self._silence_token:
+                    self._in_silence_period = False
 
     async def on_incoming_json(self, message) -> None:
         """
@@ -105,7 +125,6 @@ class AudioPlugin(Plugin):
     async def _pause_music_for_tts(self):
         """TTS 开始时暂停音乐（不清空 output_buffer，避免丢弃 TTS 帧）."""
         try:
-            from src.core.event_bus import Events
             from src.mcp.tools.music.events import MusicControlRequest
 
             logger.info("TTS 开始，发送音乐暂停请求")
@@ -119,7 +138,6 @@ class AudioPlugin(Plugin):
         """TTS 结束后恢复音乐"""
         try:
             # 通过事件总线发送恢复请求
-            from src.core.event_bus import Events
             from src.mcp.tools.music.events import MusicControlRequest
 
             logger.info("TTS 播放完成，发送音乐恢复请求")

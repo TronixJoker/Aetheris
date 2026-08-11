@@ -54,11 +54,17 @@ class ViewManager(QObject):
 
     def _subscribe_events(self):
         """订阅 EventBus 事件."""
-        self._event_bus.on(Events.UI_UPDATE_TEXT, self._on_update_text)
-        self._event_bus.on(Events.UI_UPDATE_EMOTION, self._on_update_emotion)
-        self._event_bus.on(Events.UI_UPDATE_STATUS, self._on_update_status)
-        self._event_bus.on(Events.UI_TOGGLE_WINDOW, self._on_toggle_window)
-        self._event_bus.on(Events.UI_TOGGLE_MODE, self._on_toggle_mode)
+        # 保存映射以便 close() 时精确反注册，避免悬挂回调导致
+        # "wrapped C/C++ object has been deleted" 错误
+        self._event_handlers = {
+            Events.UI_UPDATE_TEXT: self._on_update_text,
+            Events.UI_UPDATE_EMOTION: self._on_update_emotion,
+            Events.UI_UPDATE_STATUS: self._on_update_status,
+            Events.UI_TOGGLE_WINDOW: self._on_toggle_window,
+            Events.UI_TOGGLE_MODE: self._on_toggle_mode,
+        }
+        for event, handler in self._event_handlers.items():
+            self._event_bus.on(event, handler)
         logger.debug("ViewManager: 已订阅 UI 事件")
 
     def _on_config_saved(self):
@@ -154,10 +160,14 @@ class ViewManager(QObject):
         root_objects = self._engine.rootObjects()
         if root_objects:
             self._tray_service = TrayService(root_objects[0])
-            self._tray_service.setup(
+            ok = self._tray_service.setup(
                 on_show=self._show_window,
                 on_quit=self._request_quit,
             )
+            # 通知 EventBridge 托盘是否可用，QML 关闭按钮据此决定隐藏还是退出
+            self._bridge.set_tray_available(ok and self._tray_service.is_available())
+            if not ok:
+                logger.warning("托盘初始化失败，关闭按钮将直接退出应用")
 
     def _show_window(self):
         """显示主窗口."""
@@ -176,6 +186,16 @@ class ViewManager(QObject):
         """关闭视图."""
         logger.info("ViewManager: 正在关闭...")
         self._running = False
+
+        # 反注册 EventBus 订阅，避免引擎销毁后事件触发到已删除的 model 上
+        handlers = getattr(self, "_event_handlers", None)
+        if handlers:
+            for event, handler in handlers.items():
+                try:
+                    self._event_bus.off(event, handler)
+                except Exception as e:
+                    logger.debug(f"ViewManager: off {event} 失败: {e}")
+            self._event_handlers.clear()
 
         if self._tray_service:
             self._tray_service.hide()

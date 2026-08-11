@@ -34,7 +34,12 @@ AppWindow {
                     }
                 }
                 onCloseClicked: {
-                    if (eventBridge) eventBridge.onQuitRequest()
+                    // 有托盘则最小化到托盘（保留对话上下文），无托盘则退出
+                    if (eventBridge && eventBridge.isTrayAvailable && eventBridge.isTrayAvailable()) {
+                        root.hide()
+                    } else if (eventBridge) {
+                        eventBridge.onQuitRequest()
+                    }
                 }
             }
 

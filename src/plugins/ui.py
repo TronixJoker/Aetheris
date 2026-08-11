@@ -3,9 +3,10 @@
 管理 CLI/GUI 显示界面。
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from src.constants.constants import AbortReason, DeviceState
+from src.core.event_bus import Events
 from src.logging import get_logger
 from src.plugins.base import Plugin
 
@@ -63,8 +64,6 @@ class UIPlugin(Plugin):
 
     async def start(self) -> None:
         # 订阅事件
-        from src.core.event_bus import Events
-
         self._ctx.event_bus.on(Events.NETWORK_ERROR, self._on_network_error)
         self._ctx.event_bus.on(Events.MUSIC_STATE_CHANGED, self._on_music_state_changed)
         self._ctx.event_bus.on(Events.MUSIC_LYRICS_UPDATE, self._on_music_lyrics_update)
@@ -109,6 +108,18 @@ class UIPlugin(Plugin):
                         self.view_manager.main_model.set_emotion_url(url)
                     else:
                         self.view_manager.set_emotion(emotion)
+
+    async def on_protocol_connected(self, protocol: Any) -> None:
+        """协议连接建立后通知 UI 显示"已连接"."""
+        if not self.view_manager:
+            return
+        try:
+            if self._is_gui:
+                self.view_manager.main_model.set_status("已连接", connected=True)
+            else:
+                self.view_manager.set_status("已连接", connected=True)
+        except Exception as e:
+            logger.debug(f"on_protocol_connected 更新 UI 失败: {e}")
 
     async def on_device_state_changed(self, state) -> None:
         if self.is_first:
@@ -171,10 +182,22 @@ class UIPlugin(Plugin):
 
     async def _send_text(self, text: str):
         """发送文本到服务端."""
+        if not text:
+            return
         if self._ctx.is_speaking():
             await self._cmd.abort_speaking(None)
         if await self._cmd.connect_protocol():
             await self._cmd.send_wake_word_detected(text)
+        else:
+            # 连接失败：明确告知用户，避免输入框文本被静默丢弃
+            try:
+                await self._ctx.event_bus.emit(
+                    Events.UI_UPDATE_STATUS,
+                    {"status": "发送失败：未连接", "connected": False},
+                )
+            except Exception:
+                pass
+            logger.warning("发送文本失败：协议未连接")
 
     async def _press(self):
         """手动模式：按下开始录音."""
@@ -191,16 +214,25 @@ class UIPlugin(Plugin):
         """手动模式：切换录音状态（点击开始/停止）."""
 
         if not self._manual_recording:
-            # 开始录音
+            # 先连接、再翻转 UI 状态，避免连接失败时按钮已显示"发送"但录音未真正开始
+            from src.constants.constants import ListeningMode
+
+            if not await self._cmd.connect_protocol():
+                try:
+                    await self._ctx.event_bus.emit(
+                        Events.UI_UPDATE_STATUS,
+                        {"status": "无法开始录音：未连接", "connected": False},
+                    )
+                except Exception:
+                    pass
+                return
+
             self._manual_recording = True
             logger.debug("手动模式：开始录音")
 
-            # 更新按钮文本
             if self.view_manager and self._is_gui:
                 self.view_manager.main_model.set_button_text("发送")
 
-            await self._cmd.connect_protocol()
-            from src.constants.constants import ListeningMode
             await self._cmd.start_listening(ListeningMode.MANUAL)
         else:
             # 停止录音并发送
