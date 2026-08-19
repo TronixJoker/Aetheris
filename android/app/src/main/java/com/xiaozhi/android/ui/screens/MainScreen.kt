@@ -41,6 +41,8 @@ import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.ui.theme.*
 import com.xiaozhi.android.viewmodel.MainViewModel
 import kotlin.math.sin
+import kotlin.math.cos
+import kotlin.math.PI
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -459,6 +461,17 @@ fun EmotionDisplay(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(contentAlignment = Alignment.Center) {
+                // 状态光环：在机器人背后绘制动态光晕
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .size(320.dp)
+                        .graphicsLayer {
+                            rotationZ = bodyRotation * 0.5f
+                            translationY = bodyOffsetY * 0.5f
+                        }
+                ) {
+                    drawStateAura(deviceState, color, breathPhase.floatValue)
+                }
                 // 机器人主体图片（身体+头部整体，应用身体摇摆和浮动）
                 Image(
                     painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_pet),
@@ -494,6 +507,115 @@ fun EmotionDisplay(
                     .size(12.dp)
                     .clip(CircleShape)
                     .background(color)
+            )
+        }
+    }
+}
+
+/**
+ * 在机器人背后绘制状态光环——根据设备状态显示不同的动态光晕效果。
+ * - LISTENING：蓝色扩散波纹
+ * - SPEAKING：绿色声波环
+ * - THINKING：紫色聚焦光环
+ * - CONNECTING：橙色脉冲
+ * - IDLE：极淡的呼吸光晕
+ */
+private fun DrawScope.drawStateAura(
+    deviceState: DeviceState,
+    color: Color,
+    phase: Float
+) {
+    val w = size.width
+    val h = size.height
+    val cx = w * 0.515f
+    val cy = h * 0.35f
+    val baseRadius = w * 0.28f
+
+    when (deviceState) {
+        DeviceState.LISTENING -> {
+            // 蓝色扩散波纹：3 层同心圆向外扩散
+            for (i in 0..2) {
+                val wavePhase = (phase * 0.5f + i * 0.7f) % 2.1f
+                val progress = wavePhase / 2.1f
+                val alpha = (1f - progress) * 0.3f
+                val radius = baseRadius + progress * w * 0.12f
+                drawCircle(
+                    color = color.copy(alpha = alpha),
+                    radius = radius,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = w * 0.006f)
+                )
+            }
+            // 中心微光
+            drawCircle(
+                color = color.copy(alpha = 0.06f),
+                radius = baseRadius * 0.9f,
+                center = Offset(cx, cy)
+            )
+        }
+        DeviceState.SPEAKING -> {
+            // 绿色声波环：左右两侧弧线模拟声波
+            val waveExpansion = 0.5f + 0.5f * kotlin.math.sin(phase * 2f)
+            for (i in 0..1) {
+                val offset = if (i == 0) -1 else 1
+                val arcRadius = baseRadius * (0.8f + waveExpansion * 0.3f)
+                val startAngle = if (i == 0) 120f else 300f
+                drawArc(
+                    color = color.copy(alpha = 0.25f * (1f - waveExpansion * 0.5f)),
+                    startAngle = startAngle,
+                    sweepAngle = 60f,
+                    useCenter = false,
+                    topLeft = Offset(cx - arcRadius, cy - arcRadius),
+                    size = Size(arcRadius * 2, arcRadius * 2),
+                    style = Stroke(width = w * 0.005f)
+                )
+            }
+            // 中心微光
+            drawCircle(
+                color = color.copy(alpha = 0.08f),
+                radius = baseRadius * 0.85f,
+                center = Offset(cx, cy)
+            )
+        }
+        DeviceState.THINKING -> {
+            // 紫色聚焦光环：缓慢收缩的圆环
+            val focusPhase = 0.5f + 0.5f * kotlin.math.sin(phase * 1.5f)
+            val ringRadius = baseRadius * (0.85f + focusPhase * 0.15f)
+            drawCircle(
+                color = color.copy(alpha = 0.15f * (1f - focusPhase * 0.5f)),
+                radius = ringRadius,
+                center = Offset(cx, cy),
+                style = Stroke(width = w * 0.008f)
+            )
+            // 内圈光点
+            drawCircle(
+                color = color.copy(alpha = 0.05f),
+                radius = baseRadius * 0.7f,
+                center = Offset(cx, cy)
+            )
+        }
+        DeviceState.CONNECTING -> {
+            // 橙色脉冲：快速明暗变化
+            val pulsePhase = 0.5f + 0.5f * kotlin.math.sin(phase * 4f)
+            drawCircle(
+                color = color.copy(alpha = 0.12f * pulsePhase),
+                radius = baseRadius * (0.9f + pulsePhase * 0.1f),
+                center = Offset(cx, cy),
+                style = Stroke(width = w * 0.006f)
+            )
+            drawCircle(
+                color = color.copy(alpha = 0.04f),
+                radius = baseRadius * 0.85f,
+                center = Offset(cx, cy)
+            )
+        }
+        DeviceState.IDLE -> {
+            // 极淡的呼吸光晕
+            val breathAlpha = 0.03f + 0.02f * kotlin.math.sin(phase).toFloat()
+            drawCircle(
+                color = color.copy(alpha = breathAlpha),
+                radius = baseRadius * 0.95f,
+                center = Offset(cx, cy)
             )
         }
     }
@@ -1222,15 +1344,16 @@ fun MainControlButton(
     val isDisabled = activationState != ActivationService.ActivationState.ACTIVATED &&
             activationState != ActivationService.ActivationState.ACTIVATION_SUCCESS
 
-    // 活跃状态（聆听或说话）显示波浪线，否则显示直线
+    // 活跃状态（聆听、说话或思考）显示波浪线，否则显示直线
     val isActive = !isDisabled &&
-        (deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING)
+        (deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING || deviceState == DeviceState.THINKING)
 
     // 线条颜色随状态变化
     val lineColor = when {
         isDisabled -> Color.Gray
         deviceState == DeviceState.LISTENING -> XiaozhiGreen
         deviceState == DeviceState.SPEAKING -> XiaozhiOrange
+        deviceState == DeviceState.THINKING -> Color(0xFF9C27B0)  // 紫色
         deviceState == DeviceState.CONNECTING -> XiaozhiOrange
         else -> Color.White
     }
@@ -1333,6 +1456,8 @@ fun StatusText(
         deviceState == DeviceState.IDLE -> "点击按钮开始对话"
         deviceState == DeviceState.LISTENING -> "正在聆听..."
         deviceState == DeviceState.SPEAKING -> "AI 正在说话..."
+        deviceState == DeviceState.THINKING -> "正在思考..."
+        deviceState == DeviceState.CONNECTING -> "正在连接..."
         else -> "就绪"
     }
 

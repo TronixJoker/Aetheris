@@ -53,18 +53,46 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         private var timeMs: Long = 0L
         private var textureId: Int = 0
 
-        // === 粒子系统：在模型周边显示动态粒子作为状态反馈（不修改模型本身）===
-        private val particleCount = 42
-        private val particleAngle = FloatArray(particleCount)
-        private val particleOrbitRadius = FloatArray(particleCount)
-        private val particleHeight = FloatArray(particleCount)
-        private val particleSpeed = FloatArray(particleCount)
-        private val particlePhase = FloatArray(particleCount)
-        private val particlePositions = FloatArray(particleCount * 3)
-        private val particleBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
-            .allocateDirect(particleCount * 3 * 4)
+        // === 粒子系统：多层粒子（环绕层 + 上升层 + 脉冲层），在模型周边显示动态粒子作为状态反馈 ===
+        // Layer 1: 环绕粒子（LISTENING 时蓝色环绕旋转）
+        private val orbitCount = 28
+        private val orbitAngle = FloatArray(orbitCount)
+        private val orbitRadius = FloatArray(orbitCount)
+        private val orbitHeight = FloatArray(orbitCount)
+        private val orbitSpeed = FloatArray(orbitCount)
+        private val orbitPhase = FloatArray(orbitCount)
+        private val orbitPositions = FloatArray(orbitCount * 3)
+        private val orbitBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(orbitCount * 3 * 4)
             .order(java.nio.ByteOrder.nativeOrder())
             .asFloatBuffer()
+
+        // Layer 2: 上升粒子（SPEAKING 时绿色粒子向上飘散）
+        private val riseCount = 20
+        private val riseAngle = FloatArray(riseCount)
+        private val riseHeight = FloatArray(riseCount)
+        private val riseSpeed = FloatArray(riseCount)
+        private val riseRadius = FloatArray(riseCount)
+        private val riseLife = FloatArray(riseCount)   // 0~1 生命周期，控制大小和透明度
+        private val risePositions = FloatArray(riseCount * 3)
+        private val riseBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(riseCount * 3 * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
+
+        // Layer 3: 脉冲粒子（THINKING 时紫色粒子向内收缩再外扩）
+        private val pulseCount = 16
+        private val pulseAngle = FloatArray(pulseCount)
+        private val pulseRadius = FloatArray(pulseCount)
+        private val pulseSpeed = FloatArray(pulseCount)
+        private val pulsePhase = FloatArray(pulseCount)
+        private val pulsePositions = FloatArray(pulseCount * 3)
+        private val pulseBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(pulseCount * 3 * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
+
+        private var frameTime = 0L
 
         override fun onSurfaceCreated(gl: GL10, config: EGLConfig) {
             // 与 1.9.19 一致：仅开深度测试 + 2D 纹理，不设光照
@@ -151,7 +179,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             drawModel(gl)
 
             // 粒子在模型之后绘制，不修改模型本身
-            if (state == STATE_LISTENING || state == STATE_SPEAKING) {
+            if (state == STATE_LISTENING || state == STATE_SPEAKING || state == STATE_THINKING) {
                 drawParticles(gl)
             }
         }
@@ -189,25 +217,41 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         }
 
         /**
-         * 初始化粒子参数（随机分布角度、半径、高度、速度）。
+         * 初始化三层粒子参数（范围紧凑，贴近模型）。
          */
         private fun initParticles() {
             val rnd = java.util.Random()
-            for (i in 0 until particleCount) {
-                particleAngle[i] = rnd.nextFloat() * 360f
-                // 缩小环绕半径，让粒子更贴近模型，视觉范围更紧凑
-                particleOrbitRadius[i] = 0.55f + rnd.nextFloat() * 0.35f
-                // 缩小高度分布范围
-                particleHeight[i] = (rnd.nextFloat() - 0.5f) * 1.0f
-                particleSpeed[i] = 30f + rnd.nextFloat() * 60f
-                particlePhase[i] = rnd.nextFloat() * (Math.PI.toFloat() * 2f)
+            // Layer 1: 环绕粒子——紧贴模型外圈，高度范围小
+            for (i in 0 until orbitCount) {
+                orbitAngle[i] = rnd.nextFloat() * 360f
+                orbitRadius[i] = 0.40f + rnd.nextFloat() * 0.20f  // 0.40~0.60 紧贴模型
+                orbitHeight[i] = (rnd.nextFloat() - 0.5f) * 0.50f  // 高度范围 ±0.25
+                orbitSpeed[i] = 40f + rnd.nextFloat() * 50f
+                orbitPhase[i] = rnd.nextFloat() * (Math.PI.toFloat() * 2f)
+            }
+            // Layer 2: 上升粒子——从模型底部往上飘
+            for (i in 0 until riseCount) {
+                riseAngle[i] = rnd.nextFloat() * 360f
+                riseRadius[i] = 0.25f + rnd.nextFloat() * 0.20f  // 紧贴模型
+                riseHeight[i] = -0.5f + rnd.nextFloat() * 1.0f    // 初始高度分散
+                riseSpeed[i] = 0.4f + rnd.nextFloat() * 0.6f
+                riseLife[i] = rnd.nextFloat()
+            }
+            // Layer 3: 脉冲粒子——向内收缩再外扩
+            for (i in 0 until pulseCount) {
+                pulseAngle[i] = rnd.nextFloat() * 360f
+                pulseRadius[i] = 0.35f + rnd.nextFloat() * 0.15f
+                pulseSpeed[i] = 0.8f + rnd.nextFloat() * 0.6f
+                pulsePhase[i] = rnd.nextFloat() * (Math.PI.toFloat() * 2f)
             }
         }
 
         /**
-         * 绘制状态粒子（在模型周边，不修改模型本身）。
-         * - LISTENING：蓝色粒子环绕模型旋转，表示正在聆听用户说话
-         * - SPEAKING：绿色粒子向上飘散，表示 AI 正在说话
+         * 绘制状态粒子——三层粒子系统，各状态不同视觉反馈。
+         * - LISTENING：蓝色环绕粒子旋转（2 层：主粒子 + 星尘）
+         * - SPEAKING：绿色上升粒子飘散（2 层：主粒子 + 拖尾）
+         * - THINKING：紫色脉冲粒子收缩外扩（2 层：外圈 + 内圈）
+         * 范围紧凑，粒子大小和透明度有变化，视觉丰富不单调。
          */
         private fun drawParticles(gl: GL10) {
             // 重置到世界空间（与模型相同的摄像机，但不应用模型动画）
@@ -220,55 +264,130 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             gl.glDisable(GL10.GL_TEXTURE_2D)
             gl.glEnable(GL10.GL_POINT_SMOOTH)
             gl.glHint(GL10.GL_POINT_SMOOTH_HINT, GL10.GL_NICEST)
-
-            particleBuffer.clear()
-            for (i in 0 until particleCount) {
-                when (state) {
-                    STATE_LISTENING -> {
-                        // 环绕旋转 + 轻微脉动（缩小脉动幅度，粒子更紧凑）
-                        particleAngle[i] += particleSpeed[i] * 0.016f
-                        if (particleAngle[i] > 360f) particleAngle[i] -= 360f
-                        val pulseR = particleOrbitRadius[i] *
-                            (1f + 0.08f * Math.sin(timeMs * 0.003 + particlePhase[i]).toFloat())
-                        val a = Math.toRadians(particleAngle[i].toDouble())
-                        particlePositions[i * 3] = (pulseR * Math.cos(a)).toFloat()
-                        particlePositions[i * 3 + 1] = particleHeight[i] +
-                            0.1f * Math.sin(timeMs * 0.004 + particlePhase[i]).toFloat()
-                        particlePositions[i * 3 + 2] = (pulseR * Math.sin(a)).toFloat()
-                    }
-                    STATE_SPEAKING -> {
-                        // 向上飘散 + 向外扩散（缩小扩散系数和重生高度，范围更紧凑）
-                        particleHeight[i] += particleSpeed[i] * 0.012f
-                        particleAngle[i] += particleSpeed[i] * 0.3f
-                        if (particleAngle[i] > 360f) particleAngle[i] -= 360f
-                        val expandR = particleOrbitRadius[i] + (particleHeight[i] + 1f) * 0.12f
-                        val a = Math.toRadians(particleAngle[i].toDouble())
-                        particlePositions[i * 3] = (expandR * Math.cos(a)).toFloat()
-                        particlePositions[i * 3 + 1] = particleHeight[i]
-                        particlePositions[i * 3 + 2] = (expandR * Math.sin(a)).toFloat()
-                        if (particleHeight[i] > 1.0f) {
-                            particleHeight[i] = -0.8f
-                            particleAngle[i] = Math.random().toFloat() * 360f
-                        }
-                    }
-                }
-                particleBuffer.put(particlePositions[i * 3])
-                particleBuffer.put(particlePositions[i * 3 + 1])
-                particleBuffer.put(particlePositions[i * 3 + 2])
-            }
-            particleBuffer.position(0)
-
+            gl.glEnable(GL10.GL_BLEND)
+            gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA)
             gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
-            gl.glVertexPointer(3, GL10.GL_FLOAT, 0, particleBuffer)
 
-            when (state) {
-                STATE_LISTENING -> gl.glColor4f(0.2f, 0.6f, 1.0f, 0.85f)
-                STATE_SPEAKING -> gl.glColor4f(0.3f, 0.9f, 0.4f, 0.85f)
-                else -> gl.glColor4f(1f, 1f, 1f, 0.8f)
+            val t = timeMs * 0.001f
+            val dt = 0.016f
+
+            // ============ Layer 1: 环绕粒子（LISTENING 时显示）============
+            if (state == STATE_LISTENING) {
+                // 主粒子：蓝色环绕旋转
+                for (i in 0 until orbitCount) {
+                    orbitAngle[i] += orbitSpeed[i] * dt
+                    if (orbitAngle[i] > 360f) orbitAngle[i] -= 360f
+                    val rad = Math.toRadians(orbitAngle[i].toDouble()).toFloat()
+                    val rJitter = orbitRadius[i] + 0.04f * kotlin.math.sin(t * 2f + orbitPhase[i])
+                    val yJitter = orbitHeight[i] + 0.08f * kotlin.math.sin(t * 1.5f + orbitPhase[i])
+                    orbitPositions[i * 3]     = rJitter * kotlin.math.cos(rad)
+                    orbitPositions[i * 3 + 1] = yJitter
+                    orbitPositions[i * 3 + 2] = rJitter * kotlin.math.sin(rad)
+                }
+                orbitBuffer.clear()
+                orbitBuffer.put(orbitPositions)
+                orbitBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, orbitBuffer)
+                gl.glColor4f(0.2f, 0.6f, 1.0f, 0.85f)
+                gl.glPointSize(4f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, orbitCount)
+
+                // 星尘层：更小更暗的粒子，反相位旋转
+                for (i in 0 until orbitCount) {
+                    val angle = orbitAngle[i] + 180f
+                    val rad = Math.toRadians(angle.toDouble()).toFloat()
+                    val r = orbitRadius[i] * 0.7f + 0.03f * kotlin.math.cos(t * 3f + orbitPhase[i])
+                    orbitPositions[i * 3]     = r * kotlin.math.cos(rad)
+                    orbitPositions[i * 3 + 1] = orbitHeight[i] * 0.5f + 0.06f * kotlin.math.cos(t * 2f + orbitPhase[i])
+                    orbitPositions[i * 3 + 2] = r * kotlin.math.sin(rad)
+                }
+                orbitBuffer.clear()
+                orbitBuffer.put(orbitPositions)
+                orbitBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, orbitBuffer)
+                gl.glColor4f(0.5f, 0.8f, 1.0f, 0.5f)
+                gl.glPointSize(2f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, orbitCount)
             }
 
-            gl.glPointSize(5f)
-            gl.glDrawArrays(GL10.GL_POINTS, 0, particleCount)
+            // ============ Layer 2: 上升粒子（SPEAKING 时显示）============
+            if (state == STATE_SPEAKING) {
+                // 主粒子：绿色向上飘散
+                for (i in 0 until riseCount) {
+                    riseHeight[i] += riseSpeed[i] * dt
+                    riseLife[i] += dt * 0.5f
+                    if (riseLife[i] > 1f || riseHeight[i] > 1.0f) {
+                        riseHeight[i] = -0.6f
+                        riseLife[i] = 0f
+                        riseAngle[i] = java.util.Random().nextFloat() * 360f
+                        riseRadius[i] = 0.25f + java.util.Random().nextFloat() * 0.20f
+                    }
+                    val rad = Math.toRadians(riseAngle[i].toDouble()).toFloat()
+                    val sway = 0.05f * kotlin.math.sin(t * 2f + i.toFloat())
+                    val r = riseRadius[i] + sway
+                    risePositions[i * 3]     = r * kotlin.math.cos(rad)
+                    risePositions[i * 3 + 1] = riseHeight[i]
+                    risePositions[i * 3 + 2] = r * kotlin.math.sin(rad)
+                }
+                riseBuffer.clear()
+                riseBuffer.put(risePositions)
+                riseBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, riseBuffer)
+                gl.glColor4f(0.3f, 0.9f, 0.4f, 0.85f)
+                gl.glPointSize(5f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, riseCount)
+
+                // 拖尾层：更小更暗的粒子，略低于主粒子
+                for (i in 0 until riseCount) {
+                    risePositions[i * 3 + 1] -= 0.12f
+                }
+                riseBuffer.clear()
+                riseBuffer.put(risePositions)
+                riseBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, riseBuffer)
+                gl.glColor4f(0.6f, 1.0f, 0.5f, 0.4f)
+                gl.glPointSize(2f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, riseCount)
+            }
+
+            // ============ Layer 3: 脉冲粒子（THINKING 时显示）============
+            if (state == STATE_THINKING) {
+                // 外圈：紫色粒子脉冲
+                for (i in 0 until pulseCount) {
+                    pulseAngle[i] += pulseSpeed[i] * 20f * dt
+                    if (pulseAngle[i] > 360f) pulseAngle[i] -= 360f
+                    val rad = Math.toRadians(pulseAngle[i].toDouble()).toFloat()
+                    val pulse = 0.45f + 0.15f * kotlin.math.sin(t * 2.5f + pulsePhase[i])
+                    val r = pulseRadius[i] * pulse
+                    pulsePositions[i * 3]     = r * kotlin.math.cos(rad)
+                    pulsePositions[i * 3 + 1] = 0.1f * kotlin.math.sin(t * 1.8f + pulsePhase[i])
+                    pulsePositions[i * 3 + 2] = r * kotlin.math.sin(rad)
+                }
+                pulseBuffer.clear()
+                pulseBuffer.put(pulsePositions)
+                pulseBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, pulseBuffer)
+                gl.glColor4f(0.6f, 0.3f, 0.9f, 0.8f)
+                gl.glPointSize(4f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, pulseCount)
+
+                // 内圈：更小更亮的粒子，反相位
+                for (i in 0 until pulseCount) {
+                    val rad = Math.toRadians(pulseAngle[i].toDouble()).toFloat()
+                    val pulse = 0.45f + 0.15f * kotlin.math.sin(t * 2.5f + pulsePhase[i] + 1f)
+                    val r = pulseRadius[i] * pulse * 0.5f
+                    pulsePositions[i * 3]     = r * kotlin.math.cos(rad)
+                    pulsePositions[i * 3 + 1] = 0.05f * kotlin.math.cos(t * 2f + pulsePhase[i])
+                    pulsePositions[i * 3 + 2] = r * kotlin.math.sin(rad)
+                }
+                pulseBuffer.clear()
+                pulseBuffer.put(pulsePositions)
+                pulseBuffer.position(0)
+                gl.glVertexPointer(3, GL10.GL_FLOAT, 0, pulseBuffer)
+                gl.glColor4f(0.8f, 0.5f, 1.0f, 0.4f)
+                gl.glPointSize(2f)
+                gl.glDrawArrays(GL10.GL_POINTS, 0, pulseCount)
+            }
 
             // 恢复 GL 状态
             gl.glColor4f(1f, 1f, 1f, 1f)
