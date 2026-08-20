@@ -533,7 +533,7 @@ private fun DrawScope.drawStateAura(
 
     when (deviceState) {
         DeviceState.LISTENING -> {
-            // 蓝色扩散波纹：3 层同心圆向外扩散
+            // 蓝色扩散波纹：3 层同心圆向外扩散（描边，无填充）
             for (i in 0..2) {
                 val wavePhase = (phase * 0.5f + i * 0.7f) % 2.1f
                 val progress = wavePhase / 2.1f
@@ -546,18 +546,11 @@ private fun DrawScope.drawStateAura(
                     style = Stroke(width = w * 0.006f)
                 )
             }
-            // 中心微光
-            drawCircle(
-                color = color.copy(alpha = 0.06f),
-                radius = baseRadius * 0.9f,
-                center = Offset(cx, cy)
-            )
         }
         DeviceState.SPEAKING -> {
-            // 绿色声波环：左右两侧弧线模拟声波
+            // 绿色声波弧线：左右两侧弧线模拟声波（无填充）
             val waveExpansion = 0.5f + 0.5f * kotlin.math.sin(phase * 2f)
             for (i in 0..1) {
-                val offset = if (i == 0) -1 else 1
                 val arcRadius = baseRadius * (0.8f + waveExpansion * 0.3f)
                 val startAngle = if (i == 0) 120f else 300f
                 drawArc(
@@ -570,15 +563,9 @@ private fun DrawScope.drawStateAura(
                     style = Stroke(width = w * 0.005f)
                 )
             }
-            // 中心微光
-            drawCircle(
-                color = color.copy(alpha = 0.08f),
-                radius = baseRadius * 0.85f,
-                center = Offset(cx, cy)
-            )
         }
         DeviceState.THINKING -> {
-            // 紫色聚焦光环：缓慢收缩的圆环
+            // 紫色聚焦光环：缓慢收缩的圆环（描边，无填充）
             val focusPhase = 0.5f + 0.5f * kotlin.math.sin(phase * 1.5f)
             val ringRadius = baseRadius * (0.85f + focusPhase * 0.15f)
             drawCircle(
@@ -587,15 +574,9 @@ private fun DrawScope.drawStateAura(
                 center = Offset(cx, cy),
                 style = Stroke(width = w * 0.008f)
             )
-            // 内圈光点
-            drawCircle(
-                color = color.copy(alpha = 0.05f),
-                radius = baseRadius * 0.7f,
-                center = Offset(cx, cy)
-            )
         }
         DeviceState.CONNECTING -> {
-            // 橙色脉冲：快速明暗变化
+            // 橙色脉冲：快速明暗变化的描边圆环
             val pulsePhase = 0.5f + 0.5f * kotlin.math.sin(phase * 4f)
             drawCircle(
                 color = color.copy(alpha = 0.12f * pulsePhase),
@@ -603,19 +584,15 @@ private fun DrawScope.drawStateAura(
                 center = Offset(cx, cy),
                 style = Stroke(width = w * 0.006f)
             )
-            drawCircle(
-                color = color.copy(alpha = 0.04f),
-                radius = baseRadius * 0.85f,
-                center = Offset(cx, cy)
-            )
         }
         DeviceState.IDLE -> {
-            // 极淡的呼吸光晕
+            // 极淡的呼吸光晕（描边，无填充）
             val breathAlpha = 0.03f + 0.02f * kotlin.math.sin(phase).toFloat()
             drawCircle(
                 color = color.copy(alpha = breathAlpha),
                 radius = baseRadius * 0.95f,
-                center = Offset(cx, cy)
+                center = Offset(cx, cy),
+                style = Stroke(width = w * 0.004f)
             )
         }
     }
