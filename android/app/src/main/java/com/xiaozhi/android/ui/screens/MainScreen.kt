@@ -42,7 +42,9 @@ import com.xiaozhi.android.ui.theme.*
 import com.xiaozhi.android.viewmodel.MainViewModel
 import kotlin.math.sin
 import kotlin.math.cos
-import kotlin.math.PI
+
+/** 2π 的 Float 版本（避免 PI 的 Double 类型污染整个表达式） */
+private const val TAU_F = 6.2831855f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -513,89 +515,104 @@ fun EmotionDisplay(
 }
 
 /**
- * 在机器人背后绘制状态光环——根据设备状态显示不同的动态光晕效果。
- * - LISTENING：蓝色扩散波纹
- * - SPEAKING：绿色声波环
- * - THINKING：紫色聚焦光环
- * - CONNECTING：橙色脉冲
- * - IDLE：极淡的呼吸光晕
+ * 在机器人周边绘制状态粒子——散布的小光点，不画任何圆环/弧线，避免"边框感"。
+ * - LISTENING：蓝色小粒子围绕机器人游动闪烁
+ * - SPEAKING：绿色小粒子从机器人向外飘散
+ * - THINKING：紫色小粒子缓慢浮动
+ * - CONNECTING：橙色小粒子快速闪烁
+ * - IDLE：不绘制（保持干净）
  */
 private fun DrawScope.drawStateAura(
     deviceState: DeviceState,
     color: Color,
     phase: Float
 ) {
+    if (deviceState == DeviceState.IDLE) return
+
     val w = size.width
-    val h = size.height
     val cx = w * 0.515f
-    val cy = h * 0.35f
-    val baseRadius = w * 0.28f
+    val cy = w * 0.35f
 
     when (deviceState) {
         DeviceState.LISTENING -> {
-            // 蓝色扩散波纹：3 层同心圆向外扩散（描边，无填充）
-            for (i in 0..2) {
-                val wavePhase = (phase * 0.5f + i * 0.7f) % 2.1f
-                val progress = wavePhase / 2.1f
-                val alpha = (1f - progress) * 0.3f
-                val radius = baseRadius + progress * w * 0.12f
+            // 10 个蓝色小粒子：随机散布，缓慢游动 + 闪烁
+            for (i in 0 until 10) {
+                val baseAngle = hash01(i * 7.31f) * TAU_F
+                val dir = if (i % 2 == 0) 1f else -1f
+                val angle = baseAngle + phase * 0.25f * dir
+                val r = w * (0.30f + 0.12f * hash01(i * 3.71f)) *
+                    (1f + 0.06f * sin(phase * 2f + i * 1.7f))
+                val px = cx + r * cos(angle)
+                val py = cy + r * sin(angle) * 0.75f  // 椭圆散布，贴合机器人轮廓
+                val alpha = (0.35f + 0.25f * sin(phase * 3f + i * 1.3f)).coerceIn(0.1f, 0.6f)
+                val size = w * (0.006f + 0.004f * hash01(i * 11.3f))
                 drawCircle(
                     color = color.copy(alpha = alpha),
-                    radius = radius,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = w * 0.006f)
+                    radius = size,
+                    center = Offset(px, py)
                 )
             }
         }
         DeviceState.SPEAKING -> {
-            // 绿色声波弧线：左右两侧弧线模拟声波（无填充）
-            val waveExpansion = 0.5f + 0.5f * kotlin.math.sin(phase * 2f)
-            for (i in 0..1) {
-                val arcRadius = baseRadius * (0.8f + waveExpansion * 0.3f)
-                val startAngle = if (i == 0) 120f else 300f
-                drawArc(
-                    color = color.copy(alpha = 0.25f * (1f - waveExpansion * 0.5f)),
-                    startAngle = startAngle,
-                    sweepAngle = 60f,
-                    useCenter = false,
-                    topLeft = Offset(cx - arcRadius, cy - arcRadius),
-                    size = Size(arcRadius * 2, arcRadius * 2),
-                    style = Stroke(width = w * 0.005f)
+            // 12 个绿色小粒子：从机器人中心向外飘散并淡出
+            for (i in 0 until 12) {
+                val speed = 0.35f + 0.4f * hash01(i * 5.13f)
+                val progress = (phase * speed + hash01(i * 9.27f)) % 1f
+                val angle = hash01(i * 3.37f) * TAU_F + phase * 0.1f
+                val r = w * 0.12f + progress * w * 0.30f
+                val px = cx + r * cos(angle)
+                val py = cy + r * sin(angle) * 0.75f
+                val alpha = (1f - progress) * 0.55f
+                val size = w * (0.005f + 0.005f * (1f - progress))
+                drawCircle(
+                    color = color.copy(alpha = alpha),
+                    radius = size,
+                    center = Offset(px, py)
                 )
             }
         }
         DeviceState.THINKING -> {
-            // 紫色聚焦光环：缓慢收缩的圆环（描边，无填充）
-            val focusPhase = 0.5f + 0.5f * kotlin.math.sin(phase * 1.5f)
-            val ringRadius = baseRadius * (0.85f + focusPhase * 0.15f)
-            drawCircle(
-                color = color.copy(alpha = 0.15f * (1f - focusPhase * 0.5f)),
-                radius = ringRadius,
-                center = Offset(cx, cy),
-                style = Stroke(width = w * 0.008f)
-            )
+            // 8 个紫色小粒子：小范围缓慢游动
+            for (i in 0 until 8) {
+                val baseAngle = hash01(i * 6.17f) * TAU_F
+                val angle = baseAngle + phase * 0.12f
+                val r = w * (0.28f + 0.10f * hash01(i * 4.53f)) *
+                    (1f + 0.08f * sin(phase * 1.2f + i * 2.1f))
+                val px = cx + r * cos(angle)
+                val py = cy + r * sin(angle) * 0.75f + 0.03f * w * sin(phase * 1.5f + i)
+                val alpha = (0.30f + 0.20f * sin(phase * 2f + i * 1.9f)).coerceIn(0.1f, 0.5f)
+                val size = w * (0.005f + 0.004f * hash01(i * 8.91f))
+                drawCircle(
+                    color = color.copy(alpha = alpha),
+                    radius = size,
+                    center = Offset(px, py)
+                )
+            }
         }
         DeviceState.CONNECTING -> {
-            // 橙色脉冲：快速明暗变化的描边圆环
-            val pulsePhase = 0.5f + 0.5f * kotlin.math.sin(phase * 4f)
-            drawCircle(
-                color = color.copy(alpha = 0.12f * pulsePhase),
-                radius = baseRadius * (0.9f + pulsePhase * 0.1f),
-                center = Offset(cx, cy),
-                style = Stroke(width = w * 0.006f)
-            )
+            // 8 个橙色小粒子：快速闪烁
+            for (i in 0 until 8) {
+                val angle = hash01(i * 5.71f) * TAU_F + phase * 0.3f
+                val r = w * (0.26f + 0.10f * hash01(i * 2.93f))
+                val px = cx + r * cos(angle)
+                val py = cy + r * sin(angle) * 0.75f
+                val alpha = (0.4f * (0.5f + 0.5f * sin(phase * 5f + i * 2.4f))).coerceIn(0f, 0.45f)
+                val size = w * 0.007f
+                drawCircle(
+                    color = color.copy(alpha = alpha),
+                    radius = size,
+                    center = Offset(px, py)
+                )
+            }
         }
-        DeviceState.IDLE -> {
-            // 极淡的呼吸光晕（描边，无填充）
-            val breathAlpha = 0.03f + 0.02f * kotlin.math.sin(phase).toFloat()
-            drawCircle(
-                color = color.copy(alpha = breathAlpha),
-                radius = baseRadius * 0.95f,
-                center = Offset(cx, cy),
-                style = Stroke(width = w * 0.004f)
-            )
-        }
+        else -> {}
     }
+}
+
+/** 伪随机哈希：返回 0~1 的稳定伪随机值（同一 seed 恒定） */
+private fun hash01(seed: Float): Float {
+    val x = sin(seed * 127.1f + 311.7f) * 43758.5453f
+    return x - kotlin.math.floor(x)
 }
 
 /**
