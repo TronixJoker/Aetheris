@@ -67,7 +67,11 @@ class UIPlugin(Plugin):
         self._ctx.event_bus.on(Events.NETWORK_ERROR, self._on_network_error)
         self._ctx.event_bus.on(Events.MUSIC_STATE_CHANGED, self._on_music_state_changed)
         self._ctx.event_bus.on(Events.MUSIC_LYRICS_UPDATE, self._on_music_lyrics_update)
+        self._ctx.event_bus.on(Events.SPEAKER_IDENTIFIED, self._on_speaker_identified)
         logger.info("UIPlugin 已订阅音乐事件")
+
+        # 最近识别到的说话人（用于在 stt 文本前标注）
+        self._last_speaker: Optional[str] = None
 
         # 订阅用户操作事件（从 View 发出）
         self._ctx.event_bus.on(Events.UI_BUTTON_PRESS, self._press)
@@ -96,6 +100,10 @@ class UIPlugin(Plugin):
         if msg_type in ("tts", "stt"):
             if text := message.get("text"):
                 if self.view_manager:
+                    # stt 文本前标注识别到的说话人
+                    if msg_type == "stt" and self._last_speaker:
+                        text = f"【{self._last_speaker}】{text}"
+                        self._last_speaker = None
                     if self._is_gui:
                         self.view_manager.main_model.set_tts_text(text)
                     else:
@@ -161,6 +169,38 @@ class UIPlugin(Plugin):
             pool.register("ui.view_manager", view_manager.close)
 
     # ===== 回调函数 =====
+
+    async def _on_speaker_identified(self, data) -> None:
+        """声纹事件处理：注册进度 / 识别结果."""
+        if not isinstance(data, dict) or not self.view_manager:
+            return
+
+        try:
+            kind = data.get("type")
+
+            def _set_status(text: str) -> None:
+                if self._is_gui:
+                    self.view_manager.main_model.set_status(text, connected=True)
+                else:
+                    self.view_manager.set_status(text, connected=True)
+
+            if kind == "enroll_progress":
+                current, total = data.get("current", 0), data.get("total", 0)
+                _set_status(f"声纹学习中 ({current}/{total})，请继续说话")
+            elif kind == "enrolled":
+                name = data.get("name", "")
+                _set_status(f"声纹注册完成：{name}")
+            elif kind == "identified":
+                name = data.get("name", "")
+                score = data.get("score", 0.0)
+                if name:
+                    # 记住说话人，等 stt 文本到达时标注在前面
+                    self._last_speaker = name
+                    logger.info(f"说话人识别：{name}（相似度 {score:.2f}）")
+                else:
+                    self._last_speaker = "陌生人"
+        except Exception as e:
+            logger.debug(f"声纹事件处理失败: {e}")
 
     async def _request_shutdown(self):
         """请求应用关闭."""

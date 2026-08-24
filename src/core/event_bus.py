@@ -30,6 +30,9 @@ class Events:
     # 网络错误
     NETWORK_ERROR = "network_error"
 
+    # 声纹识别
+    SPEAKER_IDENTIFIED = "speaker_identified"  # 识别结果/注册进度
+
     # 音频通道
     AUDIO_CHANNEL_OPENED = "audio_channel_opened"
     AUDIO_CHANNEL_CLOSED = "audio_channel_closed"

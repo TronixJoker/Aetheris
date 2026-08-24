@@ -138,6 +138,10 @@ class WindowContextAdapter:
     def on_stop_listening(self) -> None:
         self._container.tasks.schedule_nowait(self._container.stop_listening)
 
+    def on_speech_end(self) -> None:
+        """客户端 VAD 检测到语音结束（线程安全，可从工作线程调用）."""
+        self._container.tasks.schedule_nowait(self._container.speech_end_detected)
+
     def on_manual_listen_press(self) -> None:
         self._container.tasks.schedule_nowait(self._container.start_listening_manual)
 
@@ -460,6 +464,31 @@ class ServiceContainer:
         self.state.set_keep_listening(False)
         await self.protocol.send_stop_listening()
         await self.state.set_device_state(DeviceState.IDLE)
+
+    async def speech_end_detected(self) -> None:
+        """客户端 VAD 检测到用户说完一句话，自动结束本轮识别.
+
+        解决依赖服务端 VAD 时"说完话一直停在聆听状态"的问题：
+        - AUTO_STOP：正常停止监听，服务器处理已收到的音频后回复
+        - REALTIME：通知服务器本轮语音结束并重新开始监听，保持连续对话
+        - MANUAL：不打断（由用户手动控制停止）
+        """
+        if not self.state.is_listening():
+            return
+
+        mode = self.state.listening_mode
+        if mode == ListeningMode.MANUAL:
+            return
+
+        try:
+            if mode == ListeningMode.REALTIME:
+                await self.protocol.send_stop_listening()
+                await self.protocol.send_start_listening(mode)
+            else:
+                await self.stop_listening()
+            logger.info("[VAD] 检测到语音结束，已自动停止识别")
+        except Exception as e:
+            logger.warning(f"[VAD] 自动停止识别失败: {e}")
 
     async def start_listening_manual(self) -> None:
         # 手动模式不与其它模式互斥（手动可打断自动），不做同模式幂等

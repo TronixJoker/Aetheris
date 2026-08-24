@@ -47,6 +47,22 @@ class ConfigManager:
             "WAKE_WORD": "你好小智",
             "WAKE_WORD_LANG": "zh"
         },
+        "VAD_OPTIONS": {
+            "ENABLED": True,  # 客户端本地 VAD：说完话自动停止识别
+            "MODEL_PATH": "models/vad/silero_vad.onnx",
+            "NUM_THREADS": 1,
+            "THRESHOLD": 0.5,  # 语音检测灵敏度（0-1，越低越灵敏）
+            "SILENCE_DURATION": 0.7,  # 判定说完的静音时长（秒）
+            "MIN_SPEECH_DURATION": 0.25,  # 最短语音时长（秒）
+        },
+        "SPEAKER_ID_OPTIONS": {
+            "ENABLED": True,  # 声纹人物识别
+            "MODEL_PATH": "models/speaker-id/speaker_model.onnx",
+            "NUM_THREADS": 1,
+            "THRESHOLD": 0.55,  # 相似度阈值（同一人通常 >0.7，不同人 <0.4）
+            "ENROLL_SEGMENTS": 3,  # 自动注册主人所需的语音段数
+            "OWNER_NAME": "主人",
+        },
         "CAMERA": {
             "camera_index": 0,
             "frame_width": 640,

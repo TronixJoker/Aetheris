@@ -203,6 +203,12 @@ class WindowContext(Protocol):
         """
         ...
 
+    def on_speech_end(self) -> None:
+        """
+        客户端 VAD 检测到语音结束（线程安全，可从工作线程调用）.
+        """
+        ...
+
     def on_manual_listen_press(self) -> None:
         """
         用户按下手动监听按钮.
