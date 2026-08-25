@@ -20,6 +20,7 @@ AppWindow {
     readonly property var tabConfig: [
         { name: "系统选项", component: "SystemOptionsTab.qml" },
         { name: "唤醒词", component: "WakeWordTab.qml" },
+        { name: "声纹识别", component: "SpeakerIdTab.qml" },
         { name: "摄像头", component: "CameraTab.qml" },
         { name: "音频设备", component: "AudioDeviceTab.qml" },
         { name: "快捷键", component: "ShortcutsTab.qml" },
@@ -139,6 +140,9 @@ AppWindow {
 
                             // 唤醒词
                             WakeWordTab {}
+
+                            // 声纹识别
+                            SpeakerIdTab {}
 
                             // 摄像头
                             CameraTab {}

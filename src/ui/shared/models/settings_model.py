@@ -1080,3 +1080,91 @@ class SettingsModel(BaseModel):
         except Exception as e:
             logger.error(f"摄像头测试失败: {e}")
             self.statusMessage.emit(f"[错误] {str(e)}")
+
+    # ========== 声纹识别设置 ==========
+
+    speakerChanged = Signal()  # 声纹状态变更（注册数、主人名等）
+
+    def _speaker_profile_dir(self):
+        return get_user_data_dir() / "speaker_profiles"
+
+    def _get_speakerIdEnabled(self) -> bool:
+        return bool(self._get_value("SPEAKER_ID_OPTIONS.ENABLED", True))
+
+    def _set_speakerIdEnabled(self, value: bool):
+        self._set_value("SPEAKER_ID_OPTIONS.ENABLED", value)
+
+    speakerIdEnabled = Property(
+        bool, _get_speakerIdEnabled, _set_speakerIdEnabled, notify=settingsChanged
+    )
+
+    def _get_speakerIdThreshold(self) -> float:
+        return float(self._get_value("SPEAKER_ID_OPTIONS.THRESHOLD", 0.55))
+
+    def _set_speakerIdThreshold(self, value: float):
+        self._set_value("SPEAKER_ID_OPTIONS.THRESHOLD", value)
+
+    speakerIdThreshold = Property(
+        float, _get_speakerIdThreshold, _set_speakerIdThreshold, notify=settingsChanged
+    )
+
+    def _get_speakerOwnerName(self) -> str:
+        return str(self._get_value("SPEAKER_ID_OPTIONS.OWNER_NAME", "主人"))
+
+    speakerOwnerName = Property(str, _get_speakerOwnerName, notify=settingsChanged)
+
+    def _get_speakerRegisteredCount(self) -> int:
+        """扫描声纹档案目录统计已注册人数."""
+        try:
+            d = self._speaker_profile_dir()
+            if not d.exists():
+                return 0
+            return len(list(d.glob("*.npy")))
+        except Exception:
+            return 0
+
+    speakerRegisteredCount = Property(
+        int, _get_speakerRegisteredCount, notify=speakerChanged
+    )
+
+    def _get_speakerRegisteredNames(self) -> str:
+        """已注册人物名列表（逗号分隔）."""
+        try:
+            d = self._speaker_profile_dir()
+            if not d.exists():
+                return ""
+            names = [f.stem for f in d.glob("*.npy")]
+            return ", ".join(names)
+        except Exception:
+            return ""
+
+    speakerRegisteredNames = Property(
+        str, _get_speakerRegisteredNames, notify=speakerChanged
+    )
+
+    @Slot()
+    def refreshSpeakerStatus(self):
+        """刷新声纹状态（注册数/名字）并通知 QML."""
+        self.speakerChanged.emit()
+
+    @Slot(result=bool)
+    def resetSpeakerProfile(self) -> bool:
+        """删除本地声纹档案文件（运行中的管理器由 AudioPlugin 监听事件重置）.
+
+        Returns:
+            是否成功删除
+        """
+        try:
+            d = self._speaker_profile_dir()
+            if d.exists():
+                for f in d.glob("*.npy"):
+                    f.unlink(missing_ok=True)
+            self.speakerChanged.emit()
+            self.statusMessage.emit("已重置声纹档案，下次对话将重新注册主人")
+            logger.info("声纹档案已从磁盘删除")
+            return True
+        except Exception as e:
+            logger.error(f"删除声纹档案失败: {e}", exc_info=True)
+            self.statusMessage.emit(f"重置失败: {e}")
+            return False
+

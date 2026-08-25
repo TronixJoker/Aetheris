@@ -59,6 +59,8 @@ class AudioPlugin(Plugin):
 
             # 订阅配置变更事件
             ctx.event_bus.on(Events.CONFIG_CHANGED, self._on_config_changed)
+            # 订阅声纹重置请求（来自设置界面）
+            ctx.event_bus.on(Events.SPEAKER_RESET_REQUEST, self._on_speaker_reset)
 
             # 初始化客户端 VAD + 声纹识别（模型加载放后台任务，不阻塞启动）
             self._init_speech_modules()
@@ -204,6 +206,17 @@ class AudioPlugin(Plugin):
         if self.codec:
             logger.info("AudioPlugin: 收到配置变更事件，重新加载音频设备")
             await self.codec.reload_devices()
+
+    async def _on_speaker_reset(self, _=None) -> None:
+        """处理声纹重置请求：清空已注册声纹，重新进入注册流程."""
+        if self._speaker_mgr is None or not self._speaker_mgr.enabled:
+            logger.info("声纹识别未启用，无需重置")
+            return
+        try:
+            self._speaker_mgr.reset_profiles()
+            logger.info("声纹档案已重置，将重新注册主人")
+        except Exception as e:
+            logger.error(f"重置声纹档案失败: {e}", exc_info=True)
 
     async def on_device_state_changed(self, state):
         """

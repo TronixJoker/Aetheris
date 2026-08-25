@@ -32,6 +32,7 @@ class Events:
 
     # 声纹识别
     SPEAKER_IDENTIFIED = "speaker_identified"  # 识别结果/注册进度
+    SPEAKER_RESET_REQUEST = "speaker_reset_request"  # 请求重置已注册声纹
 
     # 音频通道
     AUDIO_CHANNEL_OPENED = "audio_channel_opened"
