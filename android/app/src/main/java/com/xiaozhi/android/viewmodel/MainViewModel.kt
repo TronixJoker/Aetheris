@@ -86,6 +86,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
 
+    // ==================== 本地 VAD + 声纹识别（sherpa-onnx） ====================
+    // 客户端 VAD：说完话自动停止识别，不再依赖服务端判定
+    private var speechEndDetector: com.xiaozhi.android.audio.SpeechEndDetector? = null
+    // 声纹人物识别：识别当前说话人（主人/陌生人）
+    private var speakerRecognition: com.xiaozhi.android.audio.SpeakerRecognitionManager? = null
+    @Volatile private var vadAutoStopEnabled = true
+    @Volatile private var speakerIdEnabled = true
+    // 最近一次识别到的说话人（stt 文本到达时标注后清空）
+    @Volatile private var lastSpeakerLabel: String? = null
+    // 设置页显示的声纹状态文本
+    private val _speakerStatus = MutableStateFlow("初始化中...")
+    val speakerStatus: StateFlow<String> = _speakerStatus
+
     // 防止 init() 被重复调用（Compose 重组会多次执行），避免重复 collect 和连接
     private var isInitialized = false
 
@@ -94,6 +107,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isInitialized = true
         // 注册到 Application，供桌面宠物点击时触发聆听
         (getApplication<Application>() as? XiaozhiApp)?.lastViewModel = this
+
+        // 后台初始化本地 VAD + 声纹识别（模型加载约 1-2 秒，不阻塞连接）
+        initSpeechModules()
 
         viewModelScope.launch {
             // 同步初始化：只做本地配置，秒返回，不发起网络请求
@@ -187,6 +203,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             audioRecorder.pcmData.collect { pcm ->
                 when (_deviceState.value) {
                     DeviceState.LISTENING -> {
+                        // 本地 VAD：喂给端点检测器（说完话自动停止，仅在 arm 状态消费）
+                        speechEndDetector?.feed(pcm)
                         // 正常聆听：上传音频
                         if (audioChannelOpened) {
                             val encoded = opusCodec.encode(pcm)
@@ -209,6 +227,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 热词唤醒：IDLE 状态持续检测"珩杬"，检测到自动开始聆听
         viewModelScope.launch {
             _deviceState.collect { state ->
+                // 本地 VAD 门控：仅聆听状态下检测语音结束
+                val detector = speechEndDetector
+                if (state == DeviceState.LISTENING) detector?.arm() else detector?.disarm()
                 wakeWordJob?.cancel()
                 when (state) {
                     DeviceState.IDLE -> {
@@ -375,7 +396,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Speech-to-text results
                     val text = data["text"]?.jsonPrimitive?.content ?: ""
                     if (text.isNotEmpty()) {
-                        addLog("用户: $text")
+                        // 声纹识别结果标注（识别发生在语音结束时刻，此处消费）
+                        val tag = lastSpeakerLabel
+                        lastSpeakerLabel = null
+                        addLog(if (tag != null) "用户【$tag】: $text" else "用户: $text")
                         // 收到识别结果后切到 THINKING：停止"聆听中"粒子，
                         // 宠物显示思考动画，让用户知道"说完了，正在处理"
                         _deviceState.value = DeviceState.THINKING
@@ -801,6 +825,172 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         webSocketManager.sendListenStop()
         audioRecorder.stop()
         addLog("停止聆听")
+    }
+
+    // ==================== 本地 VAD + 声纹识别 ====================
+
+    /**
+     * 后台初始化本地 VAD 与声纹识别（IO 线程加载模型，约 1-2 秒）。
+     * 失败不影响基础语音功能，仅关闭对应特性。
+     */
+    private fun initSpeechModules() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                vadAutoStopEnabled = configManager.isVadEnabled()
+                speakerIdEnabled = configManager.isSpeakerIdEnabled()
+            } catch (e: Exception) {
+                Log.w(TAG, "读取语音设置失败，使用默认值: ${e.message}")
+            }
+
+            // 本地 VAD：说完话自动停止识别
+            if (vadAutoStopEnabled) {
+                try {
+                    val detector = com.xiaozhi.android.audio.SpeechEndDetector(getApplication())
+                    detector.onSpeechEnd = { samples, durationMs ->
+                        onLocalSpeechEnd(samples, durationMs)
+                    }
+                    if (detector.start()) {
+                        speechEndDetector = detector
+                        addLog("✅ 本地VAD已启用：说完话将自动停止识别")
+                    } else {
+                        addLog("⚠️ 本地VAD模型加载失败，使用服务端停止判定")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "VAD 初始化失败: ${e.message}")
+                    addLog("⚠️ 本地VAD初始化失败：${e.message}")
+                }
+            }
+
+            // 声纹人物识别
+            if (speakerIdEnabled) {
+                try {
+                    val mgr = com.xiaozhi.android.audio.SpeakerRecognitionManager(getApplication())
+                    mgr.threshold = configManager.getSpeakerThreshold()
+                    mgr.ownerName = configManager.getSpeakerOwnerName()
+                    mgr.onIdentified = { name, score ->
+                        onSpeakerIdentified(name, score)
+                    }
+                    mgr.onEnrollProgress = { current, total ->
+                        viewModelScope.launch(Dispatchers.Main) {
+                            addLog("🧠 声纹学习中 ($current/$total)，请继续说话...")
+                            refreshSpeakerStatus()
+                        }
+                    }
+                    mgr.onEnrolled = { name ->
+                        viewModelScope.launch(Dispatchers.Main) {
+                            addLog("✅ 声纹注册完成：$name，已可自动识别说话人")
+                            refreshSpeakerStatus()
+                        }
+                    }
+                    if (mgr.initialize()) {
+                        speakerRecognition = mgr
+                        refreshSpeakerStatus()
+                        if (mgr.isEnrolled) {
+                            addLog("✅ 声纹识别已启用（已注册：$mgr.ownerName）")
+                        } else {
+                            addLog("🧠 声纹识别已启用，前 ${mgr.enrollSegments} 句话将自动注册主人声纹")
+                        }
+                    } else {
+                        _speakerStatus.value = "声纹识别不可用（模型加载失败）"
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "声纹识别初始化失败: ${e.message}")
+                    _speakerStatus.value = "声纹识别不可用"
+                }
+            } else {
+                _speakerStatus.value = "声纹识别已关闭"
+            }
+        }
+    }
+
+    /**
+     * 本地 VAD 检测到用户说完一句话（VAD 工作线程回调）。
+     * 1. 用该语音段做声纹识别
+     * 2. 切回主线程自动结束本轮聆听
+     */
+    private fun onLocalSpeechEnd(samples: FloatArray, durationMs: Long) {
+        // 声纹识别（当前线程执行，约几十毫秒）
+        val mgr = speakerRecognition
+        if (speakerIdEnabled && mgr != null && mgr.enabled) {
+            try {
+                mgr.processSpeech(samples)
+            } catch (e: Exception) {
+                Log.w(TAG, "声纹识别失败: ${e.message}")
+            }
+        }
+
+        if (!vadAutoStopEnabled) return
+        viewModelScope.launch(Dispatchers.Main) {
+            if (_deviceState.value == DeviceState.LISTENING) {
+                stopListening()
+                addLog("🛑 检测到你说完了（${durationMs / 1000.0}s），等待识别结果...")
+            }
+        }
+    }
+
+    /** 声纹识别结果（VAD 工作线程回调）：记录说话人，stt 到达时标注 */
+    private fun onSpeakerIdentified(name: String, score: Float) {
+        lastSpeakerLabel = name.ifEmpty { "陌生人" }
+        viewModelScope.launch(Dispatchers.Main) {
+            if (name.isNotEmpty()) {
+                addLog("👤 说话人：$name（相似度 ${"%.0f%%".format(score * 100)}）")
+            } else {
+                addLog("👤 说话人：陌生人")
+            }
+        }
+    }
+
+    /** 刷新声纹状态文本（设置页显示） */
+    fun refreshSpeakerStatus() {
+        val mgr = speakerRecognition
+        _speakerStatus.value = when {
+            !speakerIdEnabled -> "声纹识别已关闭"
+            mgr == null || !mgr.enabled -> "声纹识别不可用（模型加载失败）"
+            mgr.isEnrolled -> "已注册：${mgr.ownerName}（共 ${mgr.registeredCount} 人）"
+            else -> "未注册（说完 ${mgr.enrollSegments} 句话后自动注册主人）"
+        }
+    }
+
+    /** 重置声纹档案（设置页入口）：清空后下次对话重新注册 */
+    fun resetSpeakerProfiles() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val mgr = speakerRecognition
+            if (mgr == null || !mgr.enabled) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    addLog("⚠️ 声纹识别未启用，无需重置")
+                }
+                return@launch
+            }
+            mgr.resetProfiles()
+            viewModelScope.launch(Dispatchers.Main) {
+                addLog("🗑️ 声纹档案已重置，下次对话将重新注册主人")
+                refreshSpeakerStatus()
+            }
+        }
+    }
+
+    /** 设置页保存后热应用语音设置（无需重启） */
+    fun applySpeechSettings() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                vadAutoStopEnabled = configManager.isVadEnabled()
+                speakerIdEnabled = configManager.isSpeakerIdEnabled()
+
+                val mgr = speakerRecognition
+                if (mgr != null) {
+                    mgr.threshold = configManager.getSpeakerThreshold()
+                    val newName = configManager.getSpeakerOwnerName()
+                    if (newName != mgr.ownerName && mgr.isEnrolled) {
+                        // 改名：删除旧档案并以新名字保存
+                        mgr.renameOwner(newName)
+                    }
+                    mgr.ownerName = newName
+                }
+                refreshSpeakerStatus()
+            } catch (e: Exception) {
+                Log.w(TAG, "应用语音设置失败: ${e.message}")
+            }
+        }
     }
 
     fun interruptSpeaking() {

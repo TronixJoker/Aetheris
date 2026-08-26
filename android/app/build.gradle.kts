@@ -32,8 +32,13 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 108
-        versionName = "2.2.2"
+        versionCode = 109
+        versionName = "2.3.0"
+
+        // 只打包主流 ARM 架构，剔除模拟器用 x86/x86_64（sherpa-onnx AAR 体积优化）
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -77,6 +82,9 @@ dependencies {
 
     // OkHttp for WebSocket
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // sherpa-onnx（本地 VAD 语音端点检测 + 声纹人物识别）
+    implementation(files("libs/sherpa-onnx.aar"))
 
     // Jsoup for HTML parsing (web search)
     implementation("org.jsoup:jsoup:1.17.2")
