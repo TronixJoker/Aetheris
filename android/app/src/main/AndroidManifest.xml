@@ -82,6 +82,14 @@
             </intent-filter>
         </activity>
 
+        <!-- 视频播放界面（AI play_video 工具触发，内嵌 B 站 H5 播放器） -->
+        <activity
+            android:name=".ui.VideoPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:supportsPictureInPicture="false"
+            android:theme="@style/Theme.Xiaozhi" />
+
         <service
             android:name=".audio.XiaozhiForegroundService"
             android:foregroundServiceType="microphone"

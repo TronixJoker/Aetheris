@@ -94,6 +94,30 @@ class ApiService {
         }
     }
 
+    // ==================== 1b. 必应中国搜索（国内可达的主搜索源） ====================
+
+    /**
+     * 必应中国搜索（国内直连可达，作为主搜索源）。
+     * 解析 cn.bing.com 搜索结果页：li.b_algo > h2 > a（标题）+ 摘要。
+     */
+    suspend fun searchBing(query: String): String {
+        if (query.isBlank()) return ""
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = "https://cn.bing.com/search?q=${URLEncoder.encode(query, "UTF-8")}&count=5&mkt=zh-CN"
+                val html = httpGet(url, mapOf("Referer" to "https://cn.bing.com/"))
+                if (html.isBlank()) return@withContext ""
+                parseBingResults(html)
+            } catch (e: Exception) {
+                Log.e(TAG, "Bing search failed: ${e.message}")
+                ""
+            }
+        }
+    }
+
+    /** 解析必应搜索结果 HTML（纯函数，便于单元测试） */
+    fun parseBingResults(html: String): String = HtmlParsers.parseBingResults(html)
+
     // ==================== 2. Wikipedia 百科（免费 REST API） ====================
 
     /**
@@ -269,41 +293,53 @@ class ApiService {
      * 搜索B站视频，返回标题和UP主信息。
      * API: https://api.bilibili.com/x/web-interface/search/type
      */
+    /** B 站视频条目（结构化，供视频播放界面使用） */
+
+    /** 最近一次视频搜索结果（缓存，供"播放第 N 个"引用） */
+    @Volatile
+    var lastVideoResults: List<HtmlParsers.VideoItem> = emptyList()
+        private set
+
     suspend fun searchVideo(query: String): String {
-        if (query.isBlank()) return ""
+        val items = searchVideoDetailed(query)
+        return when {
+            query.isBlank() -> ""
+            items.isEmpty() -> "未找到相关视频"
+            else -> {
+                val results = items.mapIndexed { i, item ->
+                    "${i + 1}. 《${item.title}》" +
+                        if (item.author.isNotEmpty()) " UP主：${item.author}" else ""
+                }.joinToString("\n")
+                "【B站视频】\n$results\n可对我说：播放第几个视频"
+            }
+        }
+    }
+
+    /**
+     * 搜索B站视频（结构化结果，含 bvid 供播放器使用）。
+     * API: https://api.bilibili.com/x/web-interface/search/type
+     */
+    suspend fun searchVideoDetailed(query: String): List<HtmlParsers.VideoItem> {
+        if (query.isBlank()) return emptyList()
         return withContext(Dispatchers.IO) {
             try {
                 val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)}" +
                     "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
                     "&page=1&page_size=5"
                 val body = httpGet(url, mapOf("Referer" to "https://www.bilibili.com"))
-                if (body.isBlank()) return@withContext ""
+                if (body.isBlank()) return@withContext emptyList()
 
-                // 解析 JSON 结果
-                val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
-                val authorRegex = Regex(""""author"\s*:\s*"([^"]+)"""")
-                val playRegex = Regex(""""play"\s*:\s*(\d+)""")
-
-                val titles = titleRegex.findAll(body).take(5).map { it.groupValues[1]
-                    .replace("<em class=\"keyword\">", "")
-                    .replace("</em>", "")
-                    .replace("\\\"", "\"")
-                }.toList()
-                val authors = authorRegex.findAll(body).take(5).map { it.groupValues[1] }.toList()
-
-                if (titles.isEmpty()) return@withContext "未找到相关视频"
-
-                val results = titles.mapIndexed { i, title ->
-                    val author = authors.getOrNull(i) ?: ""
-                    "《$title》" + if (author.isNotEmpty()) " UP主：$author" else ""
-                }.joinToString("\n")
-                "【B站视频】\n$results"
+                val items = HtmlParsers.parseBilibiliResults(body)
+                lastVideoResults = items
+                items
             } catch (e: Exception) {
                 Log.e(TAG, "Bilibili search failed: ${e.message}")
-                ""
+                emptyList()
             }
         }
     }
+
+
 
     // ==================== 5. 天气查询（免费 API） ====================
 
@@ -433,14 +469,28 @@ class ApiService {
      */
     suspend fun multiSearch(query: String): String {
         return coroutineScope {
+            // 主源：必应中国（国内直连可达，通常 1-2 秒返回）
+            // 备源：DuckDuckGo / Wikipedia（国内网络常不可达，并行启动但不阻塞主流程）
+            val bingDeferred = async { searchBing(query) }
             val ddgDeferred = async { searchDuckDuckGo(query) }
             val wikiDeferred = async { searchWikipedia(query) }
 
-            val ddgResult = ddgDeferred.await()
-            val wikiResult = wikiDeferred.await()
+            val bingResult = try { bingDeferred.await() } catch (_: Exception) { "" }
+
+            val ddgResult = if (bingResult.isNotBlank()) {
+                // 必应已拿到结果，取消慢源（DDG/Wiki 国内超时可达 10s+，避免拖慢回复）
+                ddgDeferred.cancel()
+                wikiDeferred.cancel()
+                ""
+            } else {
+                try { ddgDeferred.await() } catch (_: Exception) { "" }
+            }
+
+            val wikiResult = try { wikiDeferred.await() } catch (_: Exception) { "" }
 
             val parts = mutableListOf<String>()
             if (wikiResult.isNotBlank()) parts.add(wikiResult)
+            if (bingResult.isNotBlank()) parts.add("【搜索】$bingResult")
             if (ddgResult.isNotBlank()) parts.add("【搜索】$ddgResult")
 
             if (parts.isEmpty()) "" else parts.joinToString("\n\n")

@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 命令执行器：执行 AI 下发的系统命令。
@@ -420,6 +421,25 @@ class CommandExecutor(private val context: Context) {
                         "正在搜索视频：$query"
                     } else "视频搜索功能需要异步支持"
                 }
+                // 播放视频：打开 APP 内视频播放界面（B 站 H5 播放器）
+                // 支持三种参数：index（播放搜索结果第 N 个）/ bvid（直接指定）/ query（重新搜索取第一个）
+                "play_video", "video_play", "open_video" -> {
+                    val index = (arguments["index"] ?: arguments["number"] ?: arguments["no"])?.toIntOrNull()
+                    val bvid = arguments["bvid"]?.trim() ?: ""
+                    val query = arguments["query"] ?: arguments["keyword"] ?: arguments["title"] ?: ""
+                    val title = arguments["title"]?.trim() ?: ""
+                    if (asyncCallback != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = playVideo(index, bvid, query, title)
+                            asyncCallback(result)
+                        }
+                    } else {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            playVideo(index, bvid, query, title)
+                        }
+                    }
+                    "正在打开视频..."
+                }
                 "get_stock" -> {
                     val query = arguments["query"] ?: arguments["code"] ?: arguments["name"] ?: ""
                     if (asyncCallback != null) {
@@ -494,6 +514,57 @@ class CommandExecutor(private val context: Context) {
         Log.d(TAG, "Video search: $query")
         val result = apiService.searchVideo(query)
         return result.ifBlank { "未找到相关视频" }
+    }
+
+    /**
+     * 播放视频：打开 APP 内视频播放界面（B 站 H5 播放器）。
+     * 参数优先级：bvid（直接指定）> index（上次搜索结果序号）> query（重新搜索取第一个）
+     * @return 给 AI 的结果文本（用于语音播报）
+     */
+    suspend fun playVideo(index: Int?, bvid: String, query: String, title: String = ""): String {
+        var target: com.xiaozhi.android.control.HtmlParsers.VideoItem? = null
+
+        // 1. 直接指定 bvid
+        if (bvid.isNotBlank() && bvid.startsWith("BV")) {
+            target = com.xiaozhi.android.control.HtmlParsers.VideoItem(
+                title = title.ifBlank { "视频" }, author = "", bvid = bvid
+            )
+        }
+
+        // 2. 序号引用上次搜索结果
+        if (target == null && index != null && index in 1..5) {
+            val cached = apiService.lastVideoResults
+            target = cached.getOrNull(index - 1)
+            if (target == null) {
+                return "没有找到第 $index 个视频，请先搜索视频再播放"
+            }
+        }
+
+        // 3. 关键词重新搜索，取第一个结果
+        if (target == null && query.isNotBlank()) {
+            val items = apiService.searchVideoDetailed(query)
+            target = items.firstOrNull()
+        }
+
+        if (target == null || target.bvid.isBlank()) {
+            return "未找到可播放的视频"
+        }
+
+        // 打开视频播放界面（主线程启动 Activity）
+        val item = target
+        withContext(Dispatchers.Main) {
+            try {
+                val intent = Intent(context, com.xiaozhi.android.ui.VideoPlayerActivity::class.java).apply {
+                    putExtra(com.xiaozhi.android.ui.VideoPlayerActivity.EXTRA_BVID, item.bvid)
+                    putExtra(com.xiaozhi.android.ui.VideoPlayerActivity.EXTRA_TITLE, item.title)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open video player: ${e.message}")
+            }
+        }
+        return "已为你打开视频《${item.title}》"
     }
 
     /**

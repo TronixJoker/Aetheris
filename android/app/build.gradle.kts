@@ -32,8 +32,8 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 110
-        versionName = "2.3.1"
+        versionCode = 111
+        versionName = "2.3.2"
     }
 
     // ABI 拆分瘦身：每个架构单独出包（体积约为通用包的 2/3）
@@ -103,6 +103,9 @@ dependencies {
 
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // 单元测试
+    testImplementation("junit:junit:4.13.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

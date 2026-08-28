@@ -815,20 +815,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         // 关键修复：唤醒词检测器（系统 SpeechRecognizer）独占麦克风，
-        // 必须先停止并等系统释放，否则 AudioRecord 启动瞬间两者抢麦克风，
-        // 开头音频损坏 → 识别内容错误/丢字，甚至全程静音导致 VAD 无法检测语音结束
+        // 必须等它真正停止并让系统释放麦克风，否则 AudioRecord 会读到
+        // 数字静音（全零）→ 服务器识别不到内容、VAD 也检测不到语音结束
         val wakeWasRunning = wakeWordDetector?.isRunning == true
         wakeWordDetector?.stop()
         if (wakeWasRunning) {
-            kotlinx.coroutines.delay(300)
+            // stop() 同步置 isRunning=false，但系统释放麦克风是异步的；
+            // 额外等 400ms 给系统回收麦克风的缓冲时间
+            kotlinx.coroutines.delay(400)
         }
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
-        audioRecorder.start()
+        if (!audioRecorder.start()) {
+            // 启动失败：等 500ms 再重试一次（麦克风可能刚释放还没就绪）
+            addLog("⚠️ 麦克风启动失败，重试中...")
+            kotlinx.coroutines.delay(500)
+            if (!audioRecorder.start()) {
+                addLog("❌ 麦克风启动失败，可能被其他应用占用，请重试")
+                _deviceState.value = DeviceState.IDLE
+                webSocketManager.sendListenStop()
+                return
+            }
+        }
         addLog("🎤 开始聆听...")
+        // 麦克风健康自检：1.5 秒后若仍无任何有效音频（数字静音），自动重启录音
+        scheduleMicHealthCheck()
+    }
+
+    /** 麦克风健康自检任务（每次开始聆听时重新调度） */
+    private var micHealthJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 自愈机制：聆听开始 1.5 秒后检查麦克风是否真正在输出音频。
+     * "启动成功但读到全零"是麦克风被占用/路由失败的典型表现
+     * （真实麦克风必然有底噪，不会是绝对零）。检测到失效则自动重启录音。
+     */
+    private fun scheduleMicHealthCheck() {
+        micHealthJob?.cancel()
+        micHealthJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1500)
+            if (_deviceState.value != DeviceState.LISTENING) return@launch
+            if (audioRecorder.isRunning() && !audioRecorder.hasAudioSinceStart()) {
+                addLog("⚠️ 检测到麦克风无输入，自动恢复中...")
+                audioRecorder.stop()
+                kotlinx.coroutines.delay(400)
+                if (_deviceState.value == DeviceState.LISTENING) {
+                    if (audioRecorder.start()) {
+                        addLog("✅ 麦克风已恢复，请说话")
+                        scheduleMicHealthCheck() // 恢复后再自检一轮，确认真正恢复
+                    } else {
+                        addLog("❌ 麦克风恢复失败，请停止后重试（其他应用可能占用麦克风）")
+                    }
+                }
+            }
+        }
     }
 
     fun stopListening() {
+        micHealthJob?.cancel()
         _deviceState.value = DeviceState.IDLE
         webSocketManager.sendListenStop()
         audioRecorder.stop()
