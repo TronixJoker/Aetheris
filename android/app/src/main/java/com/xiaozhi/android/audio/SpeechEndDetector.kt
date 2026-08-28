@@ -21,19 +21,13 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class SpeechEndDetector(private val context: Context) {
 
-    companion object {
-        private const val TAG = "SpeechEndDetector"
-        private const val SAMPLE_RATE = 16000
-        // silero VAD 固定窗口（16kHz 下 512 样本 ≈ 32ms）
-        private const val WINDOW_SIZE = 512
-    }
-
     /** 语音结束回调：samples = 该段语音的 float 样本，durationMs = 时长（工作线程调用） */
     @Volatile
     var onSpeechEnd: ((samples: FloatArray, durationMs: Long) -> Unit)? = null
 
-    /** 检测灵敏度（0-1，越低越灵敏），启动前设置 */
-    var threshold = 0.5f
+    /** 检测灵敏度（0-1，越低越灵敏），启动前设置。
+     *  0.45：兼顾远场（桌面宠物场景手机放桌上、离嘴较远）与环境噪声 */
+    var threshold = 0.45f
 
     /** 判定说完话的静音时长（秒），启动前设置 */
     var silenceDuration = 0.7f
@@ -48,6 +42,21 @@ class SpeechEndDetector(private val context: Context) {
 
     @Volatile
     private var active = false
+
+    /** arm 时间戳（毫秒），用于 arm 后静默期 */
+    @Volatile
+    private var armTimeMs = 0L
+
+    companion object {
+        private const val TAG = "SpeechEndDetector"
+        private const val SAMPLE_RATE = 16000
+        // silero VAD 固定窗口（16kHz 下 512 样本 ≈ 32ms）
+        private const val WINDOW_SIZE = 512
+        // arm 后静默期：忽略刚进入聆听时的音频
+        // （TTS 尾音回声 / 麦克风启动瞬态 / 唤醒词释放残留，
+        //  否则会被 VAD 误判为一段语音，说完即停 → 服务器识别到回声噪声）
+        private const val ARM_BLIND_MS = 400L
+    }
 
     /** 加载模型并启动工作线程。必须在后台线程调用。 */
     fun start(): Boolean {
@@ -92,14 +101,16 @@ class SpeechEndDetector(private val context: Context) {
         Log.i(TAG, "VAD 已停止")
     }
 
-    /** 激活检测（进入 LISTENING 时调用）：重置状态，开始新一轮检测 */
+    /** 激活检测（进入 LISTENING 时调用）：重置状态，开始新一轮检测.
+     *  arm 后前 [ARM_BLIND_MS] 毫秒的音频将被忽略（静默期）。 */
     fun arm() {
         if (!running) return
         reset()
+        armTimeMs = System.currentTimeMillis()
         active = true
     }
 
-    /** 停用检测（离开 LISTENING 时调用） */
+    /** 停用检测（离开 LISTENING 状态时调用） */
     fun disarm() {
         active = false
     }
@@ -107,6 +118,8 @@ class SpeechEndDetector(private val context: Context) {
     /** 喂入音频帧（录音回调线程，16kHz 单声道 PCM16） */
     fun feed(pcm: ShortArray) {
         if (!running || !active) return
+        // arm 静默期：刚进入聆听时丢弃 TTS 尾音/设备启动瞬态
+        if (System.currentTimeMillis() - armTimeMs < ARM_BLIND_MS) return
         pendingFrames.offer(pcm.copyOf())
     }
 

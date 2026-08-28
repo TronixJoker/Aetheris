@@ -32,12 +32,18 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 109
-        versionName = "2.3.0"
+        versionCode = 110
+        versionName = "2.3.1"
+    }
 
-        // 只打包主流 ARM 架构，剔除模拟器用 x86/x86_64（sherpa-onnx AAR 体积优化）
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    // ABI 拆分瘦身：每个架构单独出包（体积约为通用包的 2/3）
+    // 下载时按设备架构选择对应 APK（UpdateManager 按 SUPPORTED_ABIS 决定）
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
 

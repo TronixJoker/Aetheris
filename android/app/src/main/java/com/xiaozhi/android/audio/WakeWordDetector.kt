@@ -32,7 +32,10 @@ class WakeWordDetector(
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isRunning = false
+    // 对外可见的运行状态（供 ViewModel 判断是否需要等麦克风释放）
+    @Volatile
+    var isRunning = false
+        private set
     private val handler = Handler(Looper.getMainLooper())
 
     fun start() {

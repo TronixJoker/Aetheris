@@ -102,6 +102,8 @@ class UpdateManager(private val context: Context) {
         val versionCode: Int = 0,
         val versionName: String = "",
         val downloadUrl: String = "",
+        // 32 位 ARM 专用包（ABI 拆分瘦身）。无此字段或为空时回退 downloadUrl（通用包）
+        val downloadUrlArm32: String = "",
         val changelog: String = ""
     )
 
@@ -253,12 +255,35 @@ class UpdateManager(private val context: Context) {
                     hasUpdate = true,
                     versionName = finalInfo.versionName,
                     changelog = finalInfo.changelog,
-                    downloadUrl = finalInfo.downloadUrl
+                    downloadUrl = pickDownloadUrlForDevice(finalInfo)
                 ))
             } else {
                 _updateState.value = UpdateState.NO_UPDATE
                 callback(UpdateResult())
             }
+        }
+    }
+
+    /**
+     * 按设备 CPU 架构选择对应 APK 下载地址（ABI 拆分瘦身）。
+     * - 32 位设备（仅 armeabi-v7a）→ downloadUrlArm32（无则回退通用包）
+     * - 64 位设备 → downloadUrl
+     */
+    private fun pickDownloadUrlForDevice(info: UpdateInfo): String {
+        return try {
+            val abis = Build.SUPPORTED_ABIS ?: emptyArray()
+            val is32BitOnly = abis.isNotEmpty() &&
+                abis.none { it.contains("arm64") || it.contains("x86_64") } &&
+                abis.any { it.contains("armeabi") }
+            if (is32BitOnly && info.downloadUrlArm32.isNotBlank()) {
+                Log.d(TAG, "32-bit device, using arm32 APK: ${info.downloadUrlArm32}")
+                info.downloadUrlArm32
+            } else {
+                info.downloadUrl
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to pick ABI-specific URL, fallback: ${e.message}")
+            info.downloadUrl
         }
     }
 

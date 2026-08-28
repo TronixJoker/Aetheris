@@ -797,10 +797,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             return
         }
-        tryStartListeningInternal()
+        viewModelScope.launch { tryStartListeningInternal() }
     }
 
-    private fun tryStartListeningInternal() {
+    private suspend fun tryStartListeningInternal() {
         val wsState = webSocketManager.connectionState.value
         if (wsState != WebSocketManager.ConnectionState.CONNECTED) {
             addLog("⚠️ 仍未连接，稍后重试")
@@ -813,6 +813,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!audioChannelOpened) {
             addLog("⚠️ 音频通道未就绪，请稍候再试...")
             return
+        }
+        // 关键修复：唤醒词检测器（系统 SpeechRecognizer）独占麦克风，
+        // 必须先停止并等系统释放，否则 AudioRecord 启动瞬间两者抢麦克风，
+        // 开头音频损坏 → 识别内容错误/丢字，甚至全程静音导致 VAD 无法检测语音结束
+        val wakeWasRunning = wakeWordDetector?.isRunning == true
+        wakeWordDetector?.stop()
+        if (wakeWasRunning) {
+            kotlinx.coroutines.delay(300)
         }
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
