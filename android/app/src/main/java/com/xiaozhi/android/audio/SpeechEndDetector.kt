@@ -26,11 +26,13 @@ class SpeechEndDetector(private val context: Context) {
     var onSpeechEnd: ((samples: FloatArray, durationMs: Long) -> Unit)? = null
 
     /** 检测灵敏度（0-1，越低越灵敏），启动前设置。
-     *  0.45：兼顾远场（桌面宠物场景手机放桌上、离嘴较远）与环境噪声 */
-    var threshold = 0.45f
+     *  0.42：远场（桌面宠物场景手机放桌上）+ 环境噪声的平衡值 */
+    var threshold = 0.42f
 
-    /** 判定说完话的静音时长（秒），启动前设置 */
-    var silenceDuration = 0.7f
+    /** 判定说完话的静音时长（秒），启动前设置。
+     *  1.2s：中文语流中间换气/思考停顿很常见（0.5-1.5s），
+     *  设太短会把"嗯……（思考）我想问……"在"嗯"后就切断 */
+    var silenceDuration = 1.2f
 
     private var vad: Vad? = null
     private val pendingFrames = ConcurrentLinkedQueue<ShortArray>()
@@ -56,6 +58,12 @@ class SpeechEndDetector(private val context: Context) {
         // （TTS 尾音回声 / 麦克风启动瞬态 / 唤醒词释放残留，
         //  否则会被 VAD 误判为一段语音，说完即停 → 服务器识别到回声噪声）
         private const val ARM_BLIND_MS = 400L
+        // 触发"说完停止"的最短语音段时长：
+        // 短于它的段（"嗯"、"啊"等口头禅开头 + 停顿思考）不触发停止，
+        // 否则整句只剩"嗯"被送去识别。桌面端是 0.3s（近场），手机远场需更大。
+        private const val MIN_SPEECH_END_MS = 1200L
+        // 最长语音段：超过此值强制切段（防止用户一直说话不停导致内存堆积）
+        private const val MAX_SPEECH_MS = 15000L
     }
 
     /** 加载模型并启动工作线程。必须在后台线程调用。 */
@@ -167,7 +175,9 @@ class SpeechEndDetector(private val context: Context) {
                     localVad.pop()
                     val samples = seg.samples
                     val durationMs = samples.size * 1000L / SAMPLE_RATE
-                    if (durationMs in 250..15000) {
+                    // 关键过滤：只有足够长的语音段才触发"说完停止"。
+                    // "嗯"等口头禅（<1.2s）+ 停顿思考是正常语流，不能当作说完了
+                    if (durationMs in MIN_SPEECH_END_MS..MAX_SPEECH_MS) {
                         Log.d(TAG, "检测到语音段: ${durationMs}ms")
                         onSpeechEnd?.invoke(samples, durationMs)
                     }

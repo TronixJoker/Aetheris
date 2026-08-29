@@ -513,13 +513,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         })
                         add(buildJsonObject {
                             put("name", "search_video")
-                            put("description", "【搜索视频】当用户要求找视频、搜视频、看B站时调用。搜索B站视频，返回标题和UP主，结果直接语音播报。例如：搜一下猫猫视频、找B站上的编程教程。Args: `query` - 视频关键词")
+                            put("description", "【搜索视频】当用户要求找视频、搜视频时调用。搜索B站视频，返回带序号的列表语音播报，用户可接着说「播放第几个」。例如：搜一下猫猫视频、找编程教程。Args: `query` - 视频关键词")
                             put("inputSchema", buildJsonObject {
                                 put("type", "object")
                                 put("properties", buildJsonObject {
                                     put("query", buildJsonObject { put("type", "string") })
                                 })
                                 put("required", buildJsonArray { add("query") })
+                            })
+                        })
+                        add(buildJsonObject {
+                            put("name", "play_video")
+                            put("description", "【播放视频】当用户要求播放、观看、看视频时必须调用此工具（而不是只播报文字）。会在手机上打开视频播放界面并自动播放。三种用法：①用户指定序号（先 search_video 过）→ 传 index；②直接给视频名 → 传 query（自动搜索取第一个）；③已知B站视频ID → 传 bvid。例如：播放第2个视频（index=2）、播放流浪地球（query=流浪地球）。Args: `index` - 序号(1-5，可选)；`query` - 视频关键词(可选)；`bvid` - B站视频ID(可选)")
+                            put("inputSchema", buildJsonObject {
+                                put("type", "object")
+                                put("properties", buildJsonObject {
+                                    put("index", buildJsonObject { put("type", "integer") })
+                                    put("query", buildJsonObject { put("type", "string") })
+                                    put("bvid", buildJsonObject { put("type", "string") })
+                                })
                             })
                         })
                         add(buildJsonObject {
@@ -1358,7 +1370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 3. 搜索视频（关键词扩展：平台词 + 视频意图词）
+        // 3. 视频意图（关键词扩展：平台词 + 视频意图词）
         if (containsAny(text, "搜视频", "找视频", "B站", "b站", "bilibili", "看视频",
                 "抖音", "快手", "推荐视频", "有意思的视频", "短视频", "视频")) {
             val query = text
@@ -1366,11 +1378,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .replace(Regex("""(视频|B站|b站|bilibili|抖音|快手|短视频|的)"""), "")
                 .trim()
             if (query.isNotEmpty()) {
-                addLog("🎬 本地解析视频搜索: $query")
+                // 意图区分：明确要"播放/观看" → 直接打开播放界面；
+                // 只是"搜/找" → 播报带序号的列表（用户可再说"播放第N个"）
+                val wantPlay = containsAny(text, "播放", "观看", "放个", "放一", "来个", "来一", "看一下", "看个")
+                if (wantPlay) {
+                    addLog("🎬 本地解析播放视频: $query")
+                    viewModelScope.launch {
+                        val result = commandExecutor.playVideo(null, "", query, "")
+                        addLog("→ $result")
+                        reportToolResult("$query 视频", result)
+                    }
+                } else {
+                    addLog("🎬 本地解析视频搜索: $query")
+                    viewModelScope.launch {
+                        val result = commandExecutor.searchVideo(query)
+                        addLog("→ $result")
+                        reportToolResult("$query 视频", result)
+                    }
+                }
+                return
+            }
+        }
+
+        // 3b. 播放搜索结果序号（"播放第2个"/"看第二个"）——引用最近一次视频搜索
+        val playIndexMatch = Regex("""(?:播放|看|观看|打开)第?([一二两三四五\d]+)个""").find(text)
+        if (playIndexMatch != null) {
+            val idxStr = playIndexMatch.groupValues[1]
+            val idx = when (idxStr) {
+                "一" -> 1; "两" -> 2; "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5
+                else -> idxStr.toIntOrNull()
+            }
+            if (idx != null && idx in 1..5) {
+                addLog("🎬 本地解析播放第 $idx 个视频")
                 viewModelScope.launch {
-                    val result = commandExecutor.searchVideo(query)
+                    val result = commandExecutor.playVideo(idx, "", "", "")
                     addLog("→ $result")
-                    reportToolResult("$query 视频", result)
+                    reportToolResult("播放视频", result)
                 }
                 return
             }
