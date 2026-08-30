@@ -32,12 +32,11 @@ class UpdateManager(private val context: Context) {
             "https://api.github.com/repos/TronixJoker/Aetheris/contents/android-update.json?ref=main",
             // 国内 GitHub 代理镜像（直接拼接 raw URL，国内访问快）
             "https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
-            "https://ghproxy.net/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
             "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
             "https://cdn.jsdelivr.net/gh/TronixJoker/Aetheris@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
-        private const val DOWNLOAD_STALL_TIMEOUT_MS = 30_000L
+        private const val DOWNLOAD_STALL_TIMEOUT_MS = 20_000L
         private val json = Json { ignoreUnknownKeys = true }
         private const val MAX_RETRIES = 2
     }
@@ -88,6 +87,21 @@ class UpdateManager(private val context: Context) {
 
     private val _downloadSize = MutableStateFlow("0 MB")
     val downloadSize: StateFlow<String> = _downloadSize
+
+    // 当前下载源描述（下载时可见，如"gh-proxy.com (1/5)"；切源/失败用户可见）
+    private val _downloadSource = MutableStateFlow("")
+    val downloadSource: StateFlow<String> = _downloadSource
+
+    /**
+     * 生成浏览器下载 URL（更新对话框"用浏览器下载"逃生通道用）。
+     * 浏览器下载器比 APP 内下载更抗网络干扰（支持断点续传、多线程）。
+     * 优先国内镜像，失败用户可自行换源。
+     */
+    fun getBrowserDownloadUrl(rawUrl: String): String {
+        return if (rawUrl.contains("raw.githubusercontent.com")) {
+            "https://gh-proxy.com/$rawUrl"
+        } else rawUrl
+    }
 
     private var downloadJob: Job? = null
     private var pendingApkFile: File? = null
@@ -298,6 +312,13 @@ class UpdateManager(private val context: Context) {
             var lastError: Exception? = null
             for ((index, url) in downloadUrls.withIndex()) {
                 try {
+                    // 源可见性：让用户看到当前在从哪个源下载、第几个（卡 0% 时不再干等）
+                    val host = try {
+                        java.net.URI(url).host ?: url
+                    } catch (_: Exception) {
+                        url.take(30)
+                    }
+                    _downloadSource.value = "$host (${index + 1}/${downloadUrls.size})"
                     Log.d(TAG, "Download attempt ${index + 1}/${downloadUrls.size} from: $url")
                     if (index > 0) {
                         _downloadProgress.value = 0
@@ -440,9 +461,9 @@ class UpdateManager(private val context: Context) {
         }
 
         // 1. 最优先：国内 GitHub 代理镜像（国内访问快，无 CDN 缓存，确保最新版本）
+        //    ghproxy.net 已实测不可用（连接超时），移除减少无效等待
         if (rawUrl != null) {
             candidates.add("https://gh-proxy.com/$rawUrl")
-            candidates.add("https://ghproxy.net/$rawUrl")
             candidates.add("https://ghfast.top/$rawUrl")
         }
 

@@ -55,6 +55,7 @@ fun SettingsScreen(
     val updateState by updateManager.updateState.collectAsStateWithLifecycle()
     val downloadProgress by updateManager.downloadProgress.collectAsStateWithLifecycle()
     val downloadSize by updateManager.downloadSize.collectAsStateWithLifecycle()
+    val downloadSource by updateManager.downloadSource.collectAsStateWithLifecycle()
 
     // Get current version from package
     val currentVersionName = remember {
@@ -96,7 +97,8 @@ fun SettingsScreen(
     LaunchedEffect(updateState) {
         when (updateState) {
             UpdateManager.UpdateState.ERROR -> {
-                kotlinx.coroutines.delay(3000)
+                // 延长到 15 秒：给用户时间点"用浏览器下载"逃生通道
+                kotlinx.coroutines.delay(15000)
                 showUpdateDialog = false
                 updateManager.reset()
             }
@@ -154,6 +156,15 @@ fun SettingsScreen(
                         UpdateManager.UpdateState.DOWNLOADING -> {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("正在下载更新...", modifier = Modifier.fillMaxWidth())
+                                // 下载源可见：卡住/切换源时用户能看到当前状态
+                                if (downloadSource.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "下载源：$downloadSource",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Spacer(Modifier.height(12.dp))
                                 if (downloadProgress >= 0) {
                                     LinearProgressIndicator(
@@ -171,6 +182,30 @@ fun SettingsScreen(
                                     Spacer(Modifier.height(4.dp))
                                     Text("已下载 $downloadSize", fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                // 逃生通道：下载卡住时用浏览器下载（支持断点续传、更抗干扰）
+                                if (downloadProgress < 5) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "下载慢或卡住？",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(onClick = {
+                                        val rawUrl = updateResult?.downloadUrl ?: return@TextButton
+                                        try {
+                                            val browserUrl = updateManager.getBrowserDownloadUrl(rawUrl)
+                                            val intent = android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(browserUrl)
+                                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            android.util.Log.w("Settings", "Browser download failed: ${e.message}")
+                                        }
+                                    }) {
+                                        Text("用浏览器下载")
+                                    }
                                 }
                             }
                         }
@@ -199,7 +234,28 @@ fun SettingsScreen(
                             Text("当前已是最新版本")
                         }
                         UpdateManager.UpdateState.ERROR -> {
-                            Text("更新失败，请检查网络连接后重试")
+                            Column {
+                                Text("更新失败，请检查网络连接后重试")
+                                // 失败时提供浏览器下载逃生通道
+                                if (updateResult?.downloadUrl?.isNotBlank() == true) {
+                                    Spacer(Modifier.height(8.dp))
+                                    TextButton(onClick = {
+                                        val rawUrl = updateResult?.downloadUrl ?: return@TextButton
+                                        try {
+                                            val browserUrl = updateManager.getBrowserDownloadUrl(rawUrl)
+                                            val intent = android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(browserUrl)
+                                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            android.util.Log.w("Settings", "Browser download failed: ${e.message}")
+                                        }
+                                    }) {
+                                        Text("用浏览器下载安装包")
+                                    }
+                                }
+                            }
                         }
                         UpdateManager.UpdateState.IDLE -> {}
                     }
