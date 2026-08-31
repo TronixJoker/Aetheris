@@ -27,18 +27,46 @@ class UpdateManager(private val context: Context) {
         // raw.githubusercontent.com 没有 CDN 缓存，是最可靠的源（虽然国内可能慢，但一定是最新的）
         private const val UPDATE_INFO_URL =
             "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json"
-        // 备用源：GitHub API（无缓存，可能限流）+ 国内镜像（快，可能有短暂缓存）+ jsDelivr（CDN缓存，最后备用）
-        private val UPDATE_INFO_FALLBACK_URLS = listOf(
+        // 备用源：GitHub API（无缓存，可能限流）+ 国内镜像（快，可能有短暂缓存）
+        // jsDelivr 是 CDN 缓存源，单独维护（不可靠，仅最后备用）
+        // ⚠️ 教训：此列表曾被硬编码索引引用（[4]），删元素后越界 → v2.3.4 启动 3 秒必崩。
+        //    现在统一用 buildUpdateSources() 遍历构建，禁止按下标访问。
+        private val UPDATE_INFO_RELIABLE_FALLBACKS = listOf(
             "https://api.github.com/repos/TronixJoker/Aetheris/contents/android-update.json?ref=main",
             // 国内 GitHub 代理镜像（直接拼接 raw URL，国内访问快）
             "https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
-            "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json",
+            "https://ghfast.top/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json"
+        )
+        private val UPDATE_INFO_CDN_FALLBACKS = listOf(
             "https://cdn.jsdelivr.net/gh/TronixJoker/Aetheris@main/android-update.json"
         )
         // 下载卡死检测：超过该时间没有任何数据流入则判定为卡死
         private const val DOWNLOAD_STALL_TIMEOUT_MS = 20_000L
         private val json = Json { ignoreUnknownKeys = true }
         private const val MAX_RETRIES = 2
+
+        /** 更新检查源（url + 是否可靠：可靠源数据可信，CDN 缓存源仅作参考） */
+        internal data class UpdateSource(val url: String, val isReliable: Boolean)
+
+        /**
+         * 构建更新检查源列表（纯函数，可单元测试）。
+         * 结构：主源(raw,可靠) + 可靠备用源(API/国内镜像) + CDN 缓存源(jsDelivr,不可靠)。
+         * 返回列表供 checkForUpdates 并行请求。
+         */
+        internal fun buildUpdateSources(updateUrl: String): List<UpdateSource> {
+            val sources = mutableListOf<UpdateSource>()
+            // 1. 主源：raw.githubusercontent.com（无 CDN 缓存，最可靠）
+            sources.add(UpdateSource(updateUrl, isReliable = true))
+            // 2. 可靠备用：GitHub API + 国内镜像（遍历，无索引访问）
+            UPDATE_INFO_RELIABLE_FALLBACKS.forEach {
+                sources.add(UpdateSource(it, isReliable = true))
+            }
+            // 3. CDN 缓存源：jsDelivr（有缓存风险，标记不可靠，仅最后备用）
+            UPDATE_INFO_CDN_FALLBACKS.forEach {
+                sources.add(UpdateSource(it, isReliable = false))
+            }
+            return sources
+        }
     }
 
     /**
@@ -131,24 +159,13 @@ class UpdateManager(private val context: Context) {
     fun checkForUpdates(updateUrl: String = UPDATE_INFO_URL, callback: (UpdateResult) -> Unit) {
         _updateState.value = UpdateState.CHECKING
         scope.launch {
-            val currentVersionCode = getCurrentVersionCode()
-            Log.d(TAG, "Current versionCode=$currentVersionCode")
+            // 安全兜底：更新检查的任何异常都不允许崩溃 APP（更新只是辅助功能）
+            try {
+                val currentVersionCode = getCurrentVersionCode()
+                Log.d(TAG, "Current versionCode=$currentVersionCode")
 
-            // 构建更新源列表：非CDN源(可靠)优先，CDN源(jsDelivr)降级为仅在无可靠源时使用
-            data class UpdateSource(val url: String, val isReliable: Boolean)
-
-            val sources = mutableListOf<UpdateSource>()
-            // 1. raw.githubusercontent.com - 无CDN缓存，最可靠（国内可能慢）
-            sources.add(UpdateSource(updateUrl, isReliable = true))
-            // 2. GitHub API - 无CDN缓存，可能限流但可靠
-            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[0], isReliable = true))
-            // 3. 国内 GitHub 代理镜像 - 直接转发 raw 内容，国内访问快，视为可靠
-            //    （gh-proxy / ghproxy.net / ghfast.top）
-            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[1], isReliable = true))
-            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[2], isReliable = true))
-            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[3], isReliable = true))
-            // 4. jsDelivr CDN 镜像 - 有CDN缓存，不可靠，仅作最后备用
-            sources.add(UpdateSource(UPDATE_INFO_FALLBACK_URLS[4], isReliable = false))
+                val sources = buildUpdateSources(updateUrl)
+                Log.d(TAG, "Update sources (${sources.size}): ${sources.joinToString { it.url.take(50) }}")
 
             // 并行请求所有源
             val deferreds = sources.map { source ->
@@ -275,6 +292,14 @@ class UpdateManager(private val context: Context) {
                 _updateState.value = UpdateState.NO_UPDATE
                 callback(UpdateResult())
             }
+            } catch (e: Exception) {
+                Log.e(TAG, "Update check failed (caught, no crash): ${e.message}", e)
+                _updateState.value = UpdateState.ERROR
+                try {
+                    callback(UpdateResult())
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 
@@ -306,6 +331,8 @@ class UpdateManager(private val context: Context) {
         _downloadProgress.value = 0
         _downloadSize.value = "0 MB"
         downloadJob = scope.launch {
+            // 安全兜底：下载流程的任何异常都不允许崩溃 APP
+            try {
             // 构建备用下载 URL 列表：原始 URL + jsDelivr 镜像切换
             val downloadUrls = buildDownloadUrlCandidates(downloadUrl)
 
@@ -407,6 +434,10 @@ class UpdateManager(private val context: Context) {
             }
             Log.e(TAG, "Download failed after trying ${downloadUrls.size} URLs: ${lastError?.message}")
             _updateState.value = UpdateState.ERROR
+            } catch (e: Exception) {
+                Log.e(TAG, "Download crashed (caught, no crash): ${e.message}", e)
+                _updateState.value = UpdateState.ERROR
+            }
         }
     }
 
