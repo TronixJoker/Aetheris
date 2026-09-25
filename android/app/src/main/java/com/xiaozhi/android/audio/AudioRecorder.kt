@@ -75,6 +75,12 @@ class AudioRecorder(private val context: Context) {
     var onMicSeized: (() -> Unit)? = null
 
     /**
+     * B5 观测回调：VOICE_COMMUNICATION 持续全零触发"音源降级为 MIC"时触发。
+     * 由 ViewModel 注入，用于输出诊断快照（该场景是设备级音源路由问题的直接证据）。
+     */
+    var onSourceEscalated: (() -> Unit)? = null
+
+    /**
      * 自本次 start() 后是否收到过有效（非全零）音频。
      * 全零帧 = 数字静音 = 麦克风路由失败（典型于唤醒词检测器未释放麦克风时）。
      * 注意：真实麦克风总会有底噪（非零样本），持续全零几乎必然是失效。
@@ -200,6 +206,8 @@ class AudioRecorder(private val context: Context) {
                                 if (recreateWithMicSource()) {
                                     consecutiveZeroFrames = 0
                                     Log.i(TAG, "已切换为 MIC 音源，恢复采集")
+                                    // B5 观测埋点：音源降级是设备级路由问题，及时 dump 快照留证
+                                    onSourceEscalated?.invoke()
                                 }
                             }
                         } else {

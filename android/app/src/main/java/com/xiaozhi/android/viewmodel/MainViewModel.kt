@@ -13,6 +13,8 @@ import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.audio.AudioPlayer
 import com.xiaozhi.android.audio.AudioRecorder
 import com.xiaozhi.android.audio.MicCaptureMonitor
+import com.xiaozhi.android.audio.MicDiagnosticsFormatter
+import com.xiaozhi.android.audio.MicForegroundPolicy
 import com.xiaozhi.android.audio.MicSelfHealPolicy
 import com.xiaozhi.android.audio.MusicPlayerManager
 import com.xiaozhi.android.audio.OpusCodec
@@ -149,6 +151,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (_deviceState.value == DeviceState.LISTENING) {
                     stopListening()
                 }
+            }
+        }
+        // B5 观测埋点：VOICE_COMMUNICATION 持续全零触发音源降级（设备级路由问题证据）
+        audioRecorder.onSourceEscalated = {
+            viewModelScope.launch(Dispatchers.Main) {
+                dumpMicDiagnostics("SOURCE_ESCALATED_TO_MIC")
             }
         }
 
@@ -456,6 +464,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         // 空识别结果不能静默吞掉：给用户明确反馈，并触发一次录音自愈重启
                         // （服务端返回空文本通常意味着收到的是无效/全零音频，重开录音可恢复路由）
+                        // B5 观测埋点：空 stt = 疑似全零音频送达服务端，dump 快照供用户反馈闭环
+                        dumpMicDiagnostics("EMPTY_STT")
                         addLog("⚠️ 未识别到内容，请靠近手机再说一次")
                         Log.w(TAG, "Received empty stt result, restarting capture for self-heal")
                         if (_deviceState.value == DeviceState.LISTENING && audioRecorder.isRunning()) {
@@ -994,7 +1004,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 仅在宠物未显示时启动，避免与宠物服务的常驻通知重复。
      */
     private fun ensureMicForegroundService() {
-        if (FloatingPetService.petVisible) {
+        // B4 判定下沉 MicForegroundPolicy：宠物未启用才需要兜底（可单测）
+        if (!MicForegroundPolicy.shouldStartFallback(FloatingPetService.petVisible)) {
             // 宠物 FGS 已带 MICROPHONE 类型，无需兜底
             return
         }
@@ -1017,7 +1028,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 聆听结束后回收 B4 兜底前台服务（宠物未启用时） */
     private fun maybeStopMicForegroundService() {
-        if (!micFallbackServiceStarted || FloatingPetService.petVisible) return
+        // B4 判定下沉 MicForegroundPolicy：仅回收"自己拉起的"兜底服务，且宠物仍未启用
+        if (!MicForegroundPolicy.shouldStopFallback(micFallbackServiceStarted, FloatingPetService.petVisible)) return
         try {
             getApplication<Application>().stopService(
                 Intent(getApplication(), XiaozhiForegroundService::class.java)
@@ -1039,21 +1051,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun dumpMicDiagnostics(reason: String) {
         try {
-            val snapshot = buildString {
-                append("[MicDiag] reason=").append(reason)
-                append(" | src=").append(audioRecorder.currentSourceName())
-                append(" | frames=").append(audioRecorder.framesReadSinceStart())
-                append(" | frameMax=").append(audioRecorder.frameMaxSinceStart())
-                append(" | rebuildRounds=").append(audioRecorder.silentRebuildRounds)
-                append(" | healRounds=").append(silentRounds)
-                append(" | cfgs=").append(micMonitor.dumpActiveConfigurations())
-                append(" | device=").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
-                append(" | android=").append(Build.VERSION.RELEASE)
-                    .append("(SDK ").append(Build.VERSION.SDK_INT).append(')')
-            }
+            // B5 快照格式下沉 MicDiagnosticsFormatter（格式锁定由单测保证）
+            val snapshot = MicDiagnosticsFormatter.build(
+                MicDiagnosticsFormatter.Fields(
+                    reason = reason,
+                    sourceName = audioRecorder.currentSourceName(),
+                    frames = audioRecorder.framesReadSinceStart(),
+                    frameMax = audioRecorder.frameMaxSinceStart(),
+                    rebuildRounds = audioRecorder.silentRebuildRounds,
+                    healRounds = silentRounds,
+                    activeConfigSummary = micMonitor.dumpActiveConfigurations(),
+                    device = "${Build.MANUFACTURER} ${Build.MODEL}",
+                    androidVersion = "${Build.VERSION.RELEASE}(SDK ${Build.VERSION.SDK_INT})"
+                )
+            )
             Log.w(TAG, snapshot)
             // 日志面板同步展示（截断防止面板溢出）
-            addLog("🩺 ${snapshot.take(160)}")
+            addLog("🩺 ${MicDiagnosticsFormatter.forUiLog(snapshot)}")
         } catch (e: Exception) {
             Log.w(TAG, "B5 诊断 dump 失败: ${e.message}")
         }

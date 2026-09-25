@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.xiaozhi.android.MainActivity
@@ -48,11 +49,20 @@ class XiaozhiForegroundService : Service() {
         //    否则会抛 MissingForegroundServiceTypeException）；
         //  - ServiceCompat.startForeground 会按 API 级别自动降级处理
         //    （低版本自动屏蔽未支持的类型位），跨版本不会崩溃。
-        ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        )
+        try {
+            ServiceCompat.startForeground(
+                this, NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } catch (e: Exception) {
+            // 兜底防御：startForeground 失败（如个别 ROM 对类型/权限校验更严格）时，
+            // 必须主动结束服务，否则系统会在 5 秒超时后按 FGS 崩溃处理（ANR/ForegroundServiceDidNotStartInTime）。
+            // 失败不影响主流程：B1/B2 的采集实证与用户提示仍在。
+            Log.e("XiaozhiFGS", "startForeground failed: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
