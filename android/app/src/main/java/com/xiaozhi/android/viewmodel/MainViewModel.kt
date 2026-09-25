@@ -405,6 +405,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _deviceState.value = DeviceState.THINKING
                         // 本地命令解析：直接识别常用语音命令并执行，不依赖服务器 MCP 工具调用
                         parseAndExecuteLocalCommand(text)
+                    } else {
+                        // 空识别结果不能静默吞掉：给用户明确反馈，并触发一次录音自愈重启
+                        // （服务端返回空文本通常意味着收到的是无效/全零音频，重开录音可恢复路由）
+                        addLog("⚠️ 未识别到内容，请靠近手机再说一次")
+                        Log.w(TAG, "Received empty stt result, restarting capture for self-heal")
+                        if (_deviceState.value == DeviceState.LISTENING && audioRecorder.isRunning()) {
+                            audioRecorder.stop()
+                            viewModelScope.launch {
+                                kotlinx.coroutines.delay(400)
+                                if (_deviceState.value == DeviceState.LISTENING) {
+                                    audioRecorder.start()
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -829,12 +843,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 关键修复：唤醒词检测器（系统 SpeechRecognizer）独占麦克风，
         // 必须等它真正停止并让系统释放麦克风，否则 AudioRecord 会读到
         // 数字静音（全零）→ 服务器识别不到内容、VAD 也检测不到语音结束
-        val wakeWasRunning = wakeWordDetector?.isRunning == true
-        wakeWordDetector?.stop()
+        val wakeDetector = wakeWordDetector
+        val wakeWasRunning = wakeDetector?.isRunning == true
+        wakeDetector?.stop()
         if (wakeWasRunning) {
             // stop() 同步置 isRunning=false，但系统释放麦克风是异步的；
             // 额外等 400ms 给系统回收麦克风的缓冲时间
             kotlinx.coroutines.delay(400)
+        } else if (wakeDetector != null) {
+            // 关键补充：唤醒词命中路径会先把 isRunning 置 false 再回调，
+            // 上述判断会漏掉"麦克风刚被系统识别器释放"的场景（录到全零 → 识别无内容）。
+            // 这里统一按"最近释放时间"兜底：距今 <600ms 仍需等待系统归还音频输入。
+            val sinceRelease = android.os.SystemClock.elapsedRealtime() - wakeDetector.lastMicReleaseTimeMs
+            if (wakeDetector.lastMicReleaseTimeMs > 0 && sinceRelease < 600) {
+                kotlinx.coroutines.delay(600 - sinceRelease)
+            }
         }
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")

@@ -105,8 +105,13 @@ class VideoPlayerActivity : Activity() {
 
         setContentView(root)
 
-        // B 站 H5 嵌入播放器
-        webView.loadUrl("https://www.bilibili.com/blackboard/html5/player.html?bvid=$bvid&autoplay=1&danmaku=0&high_quality=1")
+        // B 站外链嵌入式播放器（player.bilibili.com）。
+        // 注意：不要用 www.bilibili.com/blackboard/html5/player.html —— 该地址已 404，
+        // WebView 只会加载错误页导致"点播放没反应"。
+        webView.loadUrl(
+            "https://player.bilibili.com/player.html?bvid=$bvid" +
+                "&page=1&high_quality=1&danmaku=0&autoplay=1"
+        )
     }
 
     override fun onPause() {

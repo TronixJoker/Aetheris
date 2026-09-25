@@ -265,7 +265,12 @@ fun SettingsScreen(
                 when (updateState) {
                     UpdateManager.UpdateState.UPDATE_AVAILABLE -> {
                         TextButton(onClick = {
-                            updateManager.downloadUpdate(updateResult!!.downloadUrl)
+                            // 评审 R2：把元数据下发的预期 SHA-256 一并传入下载流程，
+                            // 下载完成后校验通过才会进入安装（无哈希时传 null，自动禁用第三方镜像）
+                            updateManager.downloadUpdate(
+                                updateResult!!.downloadUrl,
+                                updateResult!!.sha256.ifBlank { null }
+                            )
                         }) {
                             Text("立即更新")
                         }

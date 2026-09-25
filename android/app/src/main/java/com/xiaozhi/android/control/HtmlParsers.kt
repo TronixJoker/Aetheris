@@ -57,4 +57,59 @@ object HtmlParsers {
             )
         }.filter { it.title.isNotBlank() && it.bvid.isNotBlank() }
     }
+
+    /**
+     * 解析 B 站综合搜索接口 search/all/v2 的 JSON（结构化解析，非正则）。
+     *
+     * 背景：`/x/web-interface/search/type` 已被 B 站风控拦截（无 Cookie 返回 HTML 错误页），
+     * 而 `/x/web-interface/search/all/v2` 可无 Cookie 直连。
+     * 该接口 data.result 是"分块"数组（tips/brand_ad/bili_user/video...），
+     * 视频条目只存在于 result_type=="video" 的块的 data 数组里，
+     * 必须按块过滤，否则标题/UP主/bvid 会与其它块的字段错位。
+     *
+     * @return 前 5 条视频条目（title 已去高亮标签、解码 HTML 实体）
+     */
+    fun parseBilibiliSearchAllV2(body: String): List<VideoItem> {
+        return try {
+            val root = kotlinx.serialization.json.Json.parseToJsonElement(body)
+                .let { it as? kotlinx.serialization.json.JsonObject } ?: return emptyList()
+            val data = root["data"] as? kotlinx.serialization.json.JsonObject ?: return emptyList()
+            val resultBlocks = data["result"] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+
+            val items = mutableListOf<VideoItem>()
+            for (block in resultBlocks) {
+                if (items.size >= 5) break
+                val blockObj = block as? kotlinx.serialization.json.JsonObject ?: continue
+                val resultType = (blockObj["result_type"] as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.content ?: continue
+                if (resultType != "video") continue
+                val dataArr = blockObj["data"] as? kotlinx.serialization.json.JsonArray ?: continue
+                for (item in dataArr) {
+                    if (items.size >= 5) break
+                    val obj = item as? kotlinx.serialization.json.JsonObject ?: continue
+                    val bvid = (obj["bvid"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: continue
+                    if (!bvid.startsWith("BV")) continue
+                    val rawTitle = (obj["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                    val author = (obj["author"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                    val title = cleanBiliVideoTitle(rawTitle)
+                    if (title.isBlank()) continue
+                    items.add(VideoItem(title = title, author = author, bvid = bvid))
+                }
+            }
+            items
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** 清理 B 站标题：去搜索高亮 <em> 标签 + 解码常见 HTML 实体 */
+    private fun cleanBiliVideoTitle(raw: String): String = raw
+        .replace(Regex("<em[^>]*>"), "")
+        .replace("</em>", "")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .trim()
 }

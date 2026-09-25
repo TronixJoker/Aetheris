@@ -67,8 +67,8 @@ class ConfigManager(private val context: Context) {
         ),
         BILIBILI_SEARCH(
             stringPreferencesKey("api_bilibili_search"),
-            "https://api.bilibili.com/x/web-interface/search/type?",
-            "B站视频搜索 API"
+            "https://api.bilibili.com/x/web-interface/search/all/v2?",
+            "B站视频搜索 API（all/v2 无 Cookie 可直连；旧 search/type 已被风控拦截）"
         ),
         BILIBILI_VIEW(
             stringPreferencesKey("api_bilibili_view"),

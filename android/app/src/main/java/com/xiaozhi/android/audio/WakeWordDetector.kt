@@ -36,6 +36,17 @@ class WakeWordDetector(
     @Volatile
     var isRunning = false
         private set
+
+    /**
+     * 最近一次本检测器"实际释放/开始释放麦克风"的时间戳（SystemClock 时间基）。
+     * 注意：唤醒词命中路径会先把 isRunning 置 false 再回调，
+     * 调用方若只看 isRunning 会误判"没在用麦克风"而跳过等待，
+     * 导致 AudioRecord 与系统 SpeechRecognizer 抢麦克风 → 录到数字静音。
+     * 因此 ViewModel 应同时检查该时间戳：距今 <600ms 视为"麦克风刚释放"，仍需等待。
+     */
+    @Volatile
+    var lastMicReleaseTimeMs = 0L
+        private set
     private val handler = Handler(Looper.getMainLooper())
 
     fun start() {
@@ -78,6 +89,8 @@ class WakeWordDetector(
     fun stop() {
         handler.post {
             isRunning = false
+            // 记录麦克风开始释放的时刻（stopListening/destroy 后系统异步归还音频输入）
+            lastMicReleaseTimeMs = android.os.SystemClock.elapsedRealtime()
             try {
                 speechRecognizer?.stopListening()
                 speechRecognizer?.destroy()
@@ -133,7 +146,15 @@ class WakeWordDetector(
                     if (checkWakeWord(match)) {
                         Log.i(TAG, "检测到唤醒词: $match")
                         isRunning = false
-                        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+                        // 唤醒词命中：立即释放麦克风并记录释放时刻，
+                        // 供 ViewModel 判断需要等待系统归还音频输入（避免抢麦克风录到全零）
+                        lastMicReleaseTimeMs = android.os.SystemClock.elapsedRealtime()
+                        try {
+                            speechRecognizer?.stopListening()
+                            // destroy 确保识别器真正归还音频输入（仅 stopListening 部分机型不释放）
+                            speechRecognizer?.destroy()
+                            speechRecognizer = null
+                        } catch (_: Exception) {}
                         onWakeWordDetected()
                         return
                     }
@@ -149,7 +170,15 @@ class WakeWordDetector(
                     if (checkWakeWord(match)) {
                         Log.i(TAG, "检测到唤醒词(实时): $match")
                         isRunning = false
-                        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+                        // 唤醒词命中：立即释放麦克风并记录释放时刻，
+                        // 供 ViewModel 判断需要等待系统归还音频输入（避免抢麦克风录到全零）
+                        lastMicReleaseTimeMs = android.os.SystemClock.elapsedRealtime()
+                        try {
+                            speechRecognizer?.stopListening()
+                            // destroy 确保识别器真正归还音频输入（仅 stopListening 部分机型不释放）
+                            speechRecognizer?.destroy()
+                            speechRecognizer = null
+                        } catch (_: Exception) {}
                         onWakeWordDetected()
                         return
                     }

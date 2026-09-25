@@ -317,19 +317,27 @@ class ApiService {
 
     /**
      * 搜索B站视频（结构化结果，含 bvid 供播放器使用）。
-     * API: https://api.bilibili.com/x/web-interface/search/type
+     * API 优先使用 https://api.bilibili.com/x/web-interface/search/all/v2 （无 Cookie 可直连）；
+     * 兼容旧配置的 search/type 接口（现已被 B 站风控拦截，仅作降级路径）。
      */
     suspend fun searchVideoDetailed(query: String): List<HtmlParsers.VideoItem> {
         if (query.isBlank()) return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                val url = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)}" +
-                    "search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
-                    "&page=1&page_size=5"
-                val body = httpGet(url, mapOf("Referer" to "https://www.bilibili.com"))
+                val base = ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)
+                val isAllV2 = base.contains("search/all/v2")
+                val url = if (isAllV2) {
+                    // all/v2 响应含非视频块（tips/brand_ad/bili_user 等），多取一些再过滤
+                    "${base}keyword=${URLEncoder.encode(query, "UTF-8")}&page=1&page_size=20"
+                } else {
+                    "${base}search_type=video&keyword=${URLEncoder.encode(query, "UTF-8")}" +
+                        "&page=1&page_size=5"
+                }
+                val body = httpGet(url, mapOf("Referer" to "https://search.bilibili.com"))
                 if (body.isBlank()) return@withContext emptyList()
 
-                val items = HtmlParsers.parseBilibiliResults(body)
+                val items = if (isAllV2) HtmlParsers.parseBilibiliSearchAllV2(body)
+                            else HtmlParsers.parseBilibiliResults(body)
                 lastVideoResults = items
                 items
             } catch (e: Exception) {
@@ -628,14 +636,19 @@ class ApiService {
     }
 
     /**
-     * 搜索B站视频，返回 (bvid, title) 列表。
-     * 使用普通搜索接口（非 wbi），带 Cookie 头降低风控概率。
+     * 搜索B站视频，返回 (bvid, title) 列表（B站音乐播放的备选数据源）。
+     * 与 searchVideoDetailed 相同的接口策略：all/v2 结构化解析，兼容旧 search/type。
      */
     private suspend fun searchBilibiliVideos(keyword: String): List<Pair<String, String>> {
         return try {
-            val searchUrl = "${ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)}" +
-                "search_type=video&keyword=${URLEncoder.encode(keyword, "UTF-8")}" +
-                "&page=1&page_size=8"
+            val base = ConfigManager.getApiUrlSync(ConfigManager.ApiKey.BILIBILI_SEARCH)
+            val isAllV2 = base.contains("search/all/v2")
+            val searchUrl = if (isAllV2) {
+                "${base}keyword=${URLEncoder.encode(keyword, "UTF-8")}&page=1&page_size=20"
+            } else {
+                "${base}search_type=video&keyword=${URLEncoder.encode(keyword, "UTF-8")}" +
+                    "&page=1&page_size=8"
+            }
             val searchBody = httpGet(
                 searchUrl,
                 mapOf(
@@ -645,18 +658,24 @@ class ApiService {
             )
             if (searchBody.isBlank()) return emptyList()
 
-            val bvidRegex = Regex(""""bvid"\s*:\s*"(BV[A-Za-z0-9]+)"""")
-            val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
-            val bvids = bvidRegex.findAll(searchBody).map { it.groupValues[1] }.toList()
-            val titles = titleRegex.findAll(searchBody).map {
-                it.groupValues[1]
-                    .replace("<em class=\"keyword\">", "")
-                    .replace("</em>", "")
-                    .replace("\\\"", "\"")
-                    .replace("\\/", "/")
-            }.toList()
-            val n = minOf(bvids.size, titles.size, 8)
-            (0 until n).map { bvids[it] to titles[it] }
+            if (isAllV2) {
+                // all/v2：复用结构化解析器，保证 title/author/bvid 对齐（不与其它块错位）
+                HtmlParsers.parseBilibiliSearchAllV2(searchBody).map { it.bvid to it.title }
+            } else {
+                // 旧接口：正则提取（结构扁平，title/bvid 顺序一致）
+                val bvidRegex = Regex(""""bvid"\s*:\s*"(BV[A-Za-z0-9]+)"""")
+                val titleRegex = Regex(""""title"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                val bvids = bvidRegex.findAll(searchBody).map { it.groupValues[1] }.toList()
+                val titles = titleRegex.findAll(searchBody).map {
+                    it.groupValues[1]
+                        .replace("<em class=\"keyword\">", "")
+                        .replace("</em>", "")
+                        .replace("\\\"", "\"")
+                        .replace("\\/", "/")
+                }.toList()
+                val n = minOf(bvids.size, titles.size, 8)
+                (0 until n).map { bvids[it] to titles[it] }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "searchBilibiliVideos failed: ${e.message}")
             emptyList()

@@ -132,4 +132,51 @@ class HtmlParsersTest {
         assertEquals(1, items.size)
         assertTrue("转义引号应还原", items[0].title.contains("\"绝绝子\""))
     }
+
+    // ==================== B站 search/all/v2 结构化解析 ====================
+
+    @Test
+    fun `all-v2 仅提取video块且与非视频块不错位`() {
+        // 模拟真实响应：video 块之前存在 tips / bili_user 等块（含 title/author 字段）
+        val body = """
+            {"code":0,"message":"OK","data":{"result":[
+              {"result_type":"tips","data":[{"title":"这是搜索提示不是视频","author":"提示块"}]},
+              {"result_type":"bili_user","data":[{"title":"UP主主页","author":"某UP主","mid":123}]},
+              {"result_type":"video","data":[
+                 {"title":"<em class=\"keyword\">流浪地球</em>&amp;花絮","author":"染柒影视","bvid":"BV1VtRqBwEfv"},
+                 {"title":"刘慈欣原著授权 预告片","author":"流浪地球望日","bvid":"BV1tSYx66EvP"}
+              ]},
+              {"result_type":"video","data":[
+                 {"title":"一口气看完流浪地球","author":"军师姜伯约","bvid":"BV11P411R7vz"}
+              ]}
+            ]}}
+        """.trimIndent()
+        val items = HtmlParsers.parseBilibiliSearchAllV2(body)
+        assertEquals(3, items.size)
+        assertEquals("流浪地球&花絮", items[0].title)   // 高亮标签与 HTML 实体均应清理
+        assertEquals("BV1VtRqBwEfv", items[0].bvid)
+        assertEquals("流浪地球望日", items[1].author)
+        assertEquals("BV11P411R7vz", items[2].bvid)
+    }
+
+    @Test
+    fun `all-v2 超过5条只取前5条`() {
+        val videos = (1..8).joinToString(",") { i ->
+            """{"title":"视频标题$i","author":"UP$i","bvid":"BV${i}xxxx411c7mD"}"""
+        }
+        val body = """{"data":{"result":[{"result_type":"video","data":[$videos]}]}}"""
+        val items = HtmlParsers.parseBilibiliSearchAllV2(body)
+        assertEquals(5, items.size)
+        assertEquals("视频标题1", items[0].title)
+        assertEquals("视频标题5", items[4].title)
+    }
+
+    @Test
+    fun `all-v2 无video块或非法JSON返回空列表`() {
+        assertTrue(HtmlParsers.parseBilibiliSearchAllV2(
+            """{"data":{"result":[{"result_type":"tips","data":[]}]}}"""
+        ).isEmpty())
+        assertTrue(HtmlParsers.parseBilibiliSearchAllV2("not a json").isEmpty())
+        assertTrue(HtmlParsers.parseBilibiliSearchAllV2("").isEmpty())
+    }
 }
