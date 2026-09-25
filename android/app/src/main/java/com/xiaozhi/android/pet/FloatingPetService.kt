@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -20,6 +21,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.xiaozhi.android.MainActivity
 import com.xiaozhi.android.XiaozhiApp
 import com.xiaozhi.android.model.DeviceState
@@ -63,8 +65,18 @@ class FloatingPetService : Service() {
         Log.i(TAG, "Service onCreate")
         createNotificationChannel()
         try {
-            startForeground(NOTIFICATION_ID, buildNotification())
-            Log.i(TAG, "startForeground succeeded")
+            // ===== B4 FGS 加固 =====
+            // 显式声明 MICROPHONE|SPECIAL_USE 前台服务类型（与 Manifest 声明一致）：
+            //  - MICROPHONE 类型让宠物 FGS 本身就具备麦克风访问资格，
+            //    Android 11+ 后台聆听的 while-in-use 校验以"存在 microphone 类型 FGS"为准；
+            //  - SPECIAL_USE 用于桌面悬浮窗场景（API 34+ 要求显式声明）；
+            //  - ServiceCompat.startForeground 按 API 级别自动降级，跨版本安全。
+            ServiceCompat.startForeground(
+                this, NOTIFICATION_ID, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+            Log.i(TAG, "startForeground succeeded (type=MICROPHONE|SPECIAL_USE)")
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed: ${e.message}", e)
         }

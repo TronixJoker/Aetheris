@@ -48,12 +48,50 @@ class AudioRecorder(private val context: Context) {
     @Volatile private var escalatedToMicSource = false
     private var consecutiveZeroFrames = 0
 
+    // ==================== B2 首帧实证（快速重建 + 轮次上限） ====================
+    // 架构师方案 B2：启动 300ms 内全零 → 立即原地重建（不等 1.5s 健康检查）；
+    // 连续 3 轮仍全零 → 停止无限自愈，通知 ViewModel 明确提示"麦克风被占用"。
+    // silentRebuildRounds：本次聆听会话内"首帧静音重建"已完成的轮数（start() 归零）。
+    @Volatile var silentRebuildRounds = 0
+        private set
+
+    /**
+     * 首帧实证检查点（SystemClock.elapsedRealtime 时间基）：
+     * >0 表示有待执行的全零检查（启动时刻 + 300ms）；0 表示本轮已检查过/未启动。
+     */
+    @Volatile private var firstFrameCheckAtMs = 0L
+
+    /**
+     * B5 观测回调：每完成一轮"首帧静音快速重建"时触发。
+     * 由 ViewModel 注入，用于输出诊断快照（音源/帧统计/系统采集配置/设备信息）。
+     * @param round 本轮重建的序号（1 起）
+     */
+    var onSilentRebuild: ((round: Int) -> Unit)? = null
+
+    /**
+     * B2 轮次上限回调：连续 [MicSelfHealPolicy.MAX_SILENT_ROUNDS] 轮首帧仍全零，
+     * 已停止自愈并主动停止采集。由 ViewModel 注入，用于给用户明确提示并复位 UI 状态。
+     */
+    var onMicSeized: (() -> Unit)? = null
+
     /**
      * 自本次 start() 后是否收到过有效（非全零）音频。
      * 全零帧 = 数字静音 = 麦克风路由失败（典型于唤醒词检测器未释放麦克风时）。
      * 注意：真实麦克风总会有底噪（非零样本），持续全零几乎必然是失效。
      */
     fun hasAudioSinceStart(): Boolean = framesSinceStart > 0 && maxAbsSinceStart > 0
+
+    // ==================== B5 观测埋点只读接口 ====================
+
+    /** 当前实际音源名称（VOICE_COMMUNICATION / MIC / UNINITIALIZED），供诊断 dump */
+    fun currentSourceName(): String =
+        if (audioRecord == null) "UNINITIALIZED" else MicCapturePolicy.sourceName(preferredSource)
+
+    /** 自本次 start() 起已读取的帧数（含全零帧） */
+    fun framesReadSinceStart(): Int = framesSinceStart
+
+    /** 自本次 start() 起（或最近一次重建后）帧最大绝对值；0 = 数字静音 */
+    fun frameMaxSinceStart(): Int = maxAbsSinceStart
 
     fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -124,6 +162,11 @@ class AudioRecorder(private val context: Context) {
             framesSinceStart = 0
             maxAbsSinceStart = 0
 
+            // B2 首帧实证：每次 start() 重置重建轮数，并设置 300ms 后的首帧检查点
+            silentRebuildRounds = 0
+            firstFrameCheckAtMs = android.os.SystemClock.elapsedRealtime() +
+                MicSelfHealPolicy.FIRST_FRAME_SILENCE_MS
+
             recordJob = scope.launch {
                 val buffer = ShortArray(SAMPLES_PER_FRAME)
                 var consecutiveFailures = 0
@@ -161,6 +204,50 @@ class AudioRecorder(private val context: Context) {
                             }
                         } else {
                             consecutiveZeroFrames = 0
+                        }
+
+                        // ===== B2 首帧实证：到检查点时若仍为纯数字静音 → 立即原地重建 =====
+                        // 旧版要等 1.5s 健康检查才反应，这里 300ms 即响应，用户几乎无感。
+                        val checkAt = firstFrameCheckAtMs
+                        if (checkAt > 0 && android.os.SystemClock.elapsedRealtime() >= checkAt) {
+                            firstFrameCheckAtMs = 0 // 无论结论如何，本轮只检查一次
+                            if (MicSelfHealPolicy.isFirstFrameSilent(
+                                    android.os.SystemClock.elapsedRealtime() -
+                                        (checkAt - MicSelfHealPolicy.FIRST_FRAME_SILENCE_MS),
+                                    framesSinceStart, maxAbsSinceStart
+                                )
+                            ) {
+                                if (MicSelfHealPolicy.shouldAutoRebuild(silentRebuildRounds)) {
+                                    silentRebuildRounds++
+                                    Log.w(
+                                        TAG,
+                                        "B2 首帧实证失败：${MicSelfHealPolicy.FIRST_FRAME_SILENCE_MS}ms 内全零" +
+                                            "（src=${MicCapturePolicy.sourceName(preferredSource)}，" +
+                                            "frames=$framesSinceStart，frameMax=$maxAbsSinceStart），" +
+                                            "立即重建（第 $silentRebuildRounds/${MicSelfHealPolicy.MAX_SILENT_ROUNDS} 轮）"
+                                    )
+                                    // 原地重建：escalatedToMicSource=false 时会自动升级为 MIC 音源
+                                    if (recreateWithMicSource()) {
+                                        consecutiveZeroFrames = 0
+                                        // 重建后重新武装 300ms 首帧检查点，构成"连续轮次"判定
+                                        firstFrameCheckAtMs = android.os.SystemClock.elapsedRealtime() +
+                                            MicSelfHealPolicy.FIRST_FRAME_SILENCE_MS
+                                        onSilentRebuild?.invoke(silentRebuildRounds)
+                                    }
+                                } else {
+                                    // B2 轮次上限：连续 3 轮仍全零 → 停止无限自愈，交还控制权
+                                    Log.e(
+                                        TAG,
+                                        "B2 连续 ${MicSelfHealPolicy.MAX_SILENT_ROUNDS} 轮首帧仍全零，" +
+                                            "判定麦克风被其他应用/系统持续占用，停止自动重建"
+                                    )
+                                    shutdownCaptureFromLoop(
+                                        "B2 连续 ${MicSelfHealPolicy.MAX_SILENT_ROUNDS} 轮首帧静音"
+                                    )
+                                    onMicSeized?.invoke()
+                                    return@launch
+                                }
+                            }
                         }
 
                         _pcmData.emit(buffer.copyOf(read))
@@ -231,6 +318,27 @@ class AudioRecorder(private val context: Context) {
             Log.e(TAG, "MIC 音源重建失败: ${e.message}")
             false
         }
+    }
+
+    /**
+     * B2 轮次上限专用：在录音读帧协程内部直接释放采集资源并结束循环。
+     * 与 stop() 的区别：不取消 recordJob（当前就在 recordJob 里），
+     * 仅置位 isRecording 使循环退出，避免自我取消引发的协程边界问题。
+     * 仅在录音读帧协程内调用（与 read 同线程，避免并发访问 audioRecord）。
+     */
+    private fun shutdownCaptureFromLoop(reason: String) {
+        isRecording = false
+        try {
+            audioRecord?.apply {
+                stop()
+                release()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "shutdownCaptureFromLoop 释放 AudioRecord 异常: ${e.message}")
+        }
+        audioRecord = null
+        scope.launch { _isRecordingState.emit(false) }
+        Log.e(TAG, "Recording aborted: $reason")
     }
 
     fun stop() {

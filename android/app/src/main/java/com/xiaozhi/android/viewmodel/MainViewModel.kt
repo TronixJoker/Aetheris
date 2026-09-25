@@ -1,7 +1,9 @@
 package com.xiaozhi.android.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -10,8 +12,11 @@ import com.xiaozhi.android.XiaozhiApp
 import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.audio.AudioPlayer
 import com.xiaozhi.android.audio.AudioRecorder
+import com.xiaozhi.android.audio.MicCaptureMonitor
+import com.xiaozhi.android.audio.MicSelfHealPolicy
 import com.xiaozhi.android.audio.MusicPlayerManager
 import com.xiaozhi.android.audio.OpusCodec
+import com.xiaozhi.android.audio.XiaozhiForegroundService
 import com.xiaozhi.android.config.ConfigManager
 import com.xiaozhi.android.control.CommandExecutor
 import com.xiaozhi.android.model.DeviceState
@@ -27,12 +32,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "MainViewModel"
         private val json = Json { ignoreUnknownKeys = true }
+
+        // B1：启动聆听前等待"无他方采集客户端"的最长时间（方案 B1 规格：最多等 2s，
+        // 超时明确提示并取消本次聆听，不再用旧版 400/600/500ms 经验值瞎等）
+        private const val MIC_FREE_WAIT_TIMEOUT_MS = 2000L
     }
 
     private val configManager = ConfigManager(application)
     val activationService = ActivationService(configManager)
     val webSocketManager = WebSocketManager()
     private val audioRecorder = AudioRecorder(application)
+
+    // ==================== 方案 B 快速加固（架构师 v1 报告） ====================
+
+    // B1/B5：麦克风采集会话监听器——事件驱动等待"无他方采集客户端"，
+    // 并提供 activeRecordingConfigurations 摘要给观测埋点
+    private val micMonitor = MicCaptureMonitor(
+        application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    )
+
+    // B2：连续"静音自愈"轮数（由 1.5s 健康检查 / 空 stt 触发的重建计入；
+    // 检测到有效音频或新一轮聆听时归零）。轮次上限后停止自动重启并明确提示。
+    @Volatile private var silentRounds = 0
+
+    // B4：本次聆听是否由 ViewModel 拉起了兜底前台服务（宠物未启用场景），聆听结束后回收
+    @Volatile private var micFallbackServiceStarted = false
+
     private val audioPlayer = AudioPlayer()
     private val opusCodec = OpusCodec()
     private val commandExecutor = CommandExecutor(application)
@@ -107,6 +132,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isInitialized = true
         // 注册到 Application，供桌面宠物点击时触发聆听
         (getApplication<Application>() as? XiaozhiApp)?.lastViewModel = this
+
+        // ===== B2 回调接入：AudioRecorder 首帧实证事件 → 观测 + 兜底提示 =====
+        // 注：回调在 AudioRecorder 的 IO 读帧协程里触发，需切主线程操作 UI 状态
+        audioRecorder.onSilentRebuild = { round ->
+            viewModelScope.launch(Dispatchers.Main) {
+                dumpMicDiagnostics("FIRST_FRAME_SILENT_R$round")
+                addLog("⚠️ 检测到麦克风静音，已快速重建采集（第 $round/${MicSelfHealPolicy.MAX_SILENT_ROUNDS} 轮）...")
+            }
+        }
+        audioRecorder.onMicSeized = {
+            viewModelScope.launch(Dispatchers.Main) {
+                // B2 轮次上限触发：连续 3 轮首帧仍全零 → 不再无限自愈，明确提示并复位
+                dumpMicDiagnostics("FIRST_FRAME_SILENT_GIVE_UP")
+                addLog(MicSelfHealPolicy.USER_MESSAGE)
+                if (_deviceState.value == DeviceState.LISTENING) {
+                    stopListening()
+                }
+            }
+        }
 
         // 后台初始化本地 VAD + 声纹识别（模型加载约 1-2 秒，不阻塞连接）
         initSpeechModules()
@@ -274,6 +318,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             )
+            // B3：权限不足 / 连续音频错误导致热词检测停止自动重启时，给用户明确提示
+            wakeWordDetector?.onErrorFatal = { message ->
+                viewModelScope.launch(Dispatchers.Main) { addLog("❌ $message") }
+            }
         }
         wakeWordDetector?.start()
     }
@@ -840,25 +888,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addLog("⚠️ 音频通道未就绪，请稍候再试...")
             return
         }
-        // 关键修复：唤醒词检测器（系统 SpeechRecognizer）独占麦克风，
-        // 必须等它真正停止并让系统释放麦克风，否则 AudioRecord 会读到
-        // 数字静音（全零）→ 服务器识别不到内容、VAD 也检测不到语音结束
+        // ===== B1 事件驱动等待（替代旧版 400/600/500ms 固定延时猜测） =====
+        // 1) 先停热词检测器（系统 SpeechRecognizer 独占麦克风，destroy 归还是异步的）；
+        // 2) 通过 AudioRecordingCallback 校验 activeRecordingConfigurations 已无他方采集
+        //    客户端后再启动 AudioRecord，最多等 2s，超时明确提示。
+        // 依据：官方"共享音频输入"机制——他方客户端（尤其是系统识别服务）仍在采集时，
+        // Android 10+ 的并发捕获策略会把本 APP 的采集静音（录到全零），等多久都没用。
         val wakeDetector = wakeWordDetector
-        val wakeWasRunning = wakeDetector?.isRunning == true
         wakeDetector?.stop()
-        if (wakeWasRunning) {
-            // stop() 同步置 isRunning=false，但系统释放麦克风是异步的；
-            // 额外等 400ms 给系统回收麦克风的缓冲时间
-            kotlinx.coroutines.delay(400)
-        } else if (wakeDetector != null) {
-            // 关键补充：唤醒词命中路径会先把 isRunning 置 false 再回调，
-            // 上述判断会漏掉"麦克风刚被系统识别器释放"的场景（录到全零 → 识别无内容）。
-            // 这里统一按"最近释放时间"兜底：距今 <600ms 仍需等待系统归还音频输入。
-            val sinceRelease = android.os.SystemClock.elapsedRealtime() - wakeDetector.lastMicReleaseTimeMs
-            if (wakeDetector.lastMicReleaseTimeMs > 0 && sinceRelease < 600) {
-                kotlinx.coroutines.delay(600 - sinceRelease)
-            }
+        if (!micMonitor.awaitMicFree(MIC_FREE_WAIT_TIMEOUT_MS)) {
+            dumpMicDiagnostics("B1_WAIT_TIMEOUT")
+            addLog("❌ 麦克风被其他应用/系统服务占用（等待 ${MIC_FREE_WAIT_TIMEOUT_MS / 1000}s 超时），已取消本次聆听")
+            Log.w(TAG, "B1 等待超时: ${micMonitor.dumpActiveConfigurations()}")
+            return
         }
+
+        // ===== B4 麦克风资格兜底：宠物悬浮窗未启用时拉起 microphone 类型前台服务 =====
+        ensureMicForegroundService()
+
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
         if (!audioRecorder.start()) {
@@ -866,6 +913,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addLog("⚠️ 麦克风启动失败，重试中...")
             kotlinx.coroutines.delay(500)
             if (!audioRecorder.start()) {
+                dumpMicDiagnostics("AUDIO_RECORD_START_FAIL")
                 addLog("❌ 麦克风启动失败，可能被其他应用占用，请重试")
                 _deviceState.value = DeviceState.IDLE
                 webSocketManager.sendListenStop()
@@ -873,7 +921,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         addLog("🎤 开始聆听...")
-        // 麦克风健康自检：1.5 秒后若仍无任何有效音频（数字静音），自动重启录音
+        // B2：新一轮聆听重置"连续静音自愈轮数"
+        silentRounds = 0
+        // 麦克风健康自检：1.5 秒后若仍无任何有效音频（数字静音），进入带轮次上限的自愈流程
         scheduleMicHealthCheck()
     }
 
@@ -883,26 +933,129 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 自愈机制：聆听开始 1.5 秒后检查麦克风是否真正在输出音频。
      * "启动成功但读到全零"是麦克风被占用/路由失败的典型表现
-     * （真实麦克风必然有底噪，不会是绝对零）。检测到失效则自动重启录音。
+     * （真实麦克风必然有底噪，不会是绝对零）。
+     * B2 改造：失效后进入 [rebuildCaptureAfterSilence]——带轮次上限的自愈，
+     * 连续 [MicSelfHealPolicy.MAX_SILENT_ROUNDS] 轮仍静音则停止自动重启并明确提示。
      */
     private fun scheduleMicHealthCheck() {
         micHealthJob?.cancel()
         micHealthJob = viewModelScope.launch {
             kotlinx.coroutines.delay(1500)
             if (_deviceState.value != DeviceState.LISTENING) return@launch
-            if (audioRecorder.isRunning() && !audioRecorder.hasAudioSinceStart()) {
-                addLog("⚠️ 检测到麦克风无输入，自动恢复中...")
-                audioRecorder.stop()
-                kotlinx.coroutines.delay(400)
-                if (_deviceState.value == DeviceState.LISTENING) {
-                    if (audioRecorder.start()) {
-                        addLog("✅ 麦克风已恢复，请说话")
-                        scheduleMicHealthCheck() // 恢复后再自检一轮，确认真正恢复
-                    } else {
-                        addLog("❌ 麦克风恢复失败，请停止后重试（其他应用可能占用麦克风）")
-                    }
-                }
+            if (!audioRecorder.isRunning()) return@launch
+            if (audioRecorder.hasAudioSinceStart()) {
+                // 已有有效音频 → 重置连续静音轮数（B2：正常使用即清零）
+                silentRounds = 0
+                return@launch
             }
+            rebuildCaptureAfterSilence()
+        }
+    }
+
+    /**
+     * B2 静音自愈统一入口（1.5s 健康检查 / 空 stt 共用）：
+     *  - 轮次未达上限：停止录音 → 等 400ms → 重启 → 继续自检；
+     *  - 达到上限（连续 3 轮静音）：停止无限自愈，dump 观测埋点，
+     *    明确提示"麦克风被占用"，把控制权交还用户。
+     */
+    private suspend fun rebuildCaptureAfterSilence() {
+        silentRounds++
+        if (!MicSelfHealPolicy.shouldAutoRebuild(silentRounds)) {
+            // B2：不再无限自愈
+            dumpMicDiagnostics("SELF_HEAL_GIVE_UP")
+            addLog(MicSelfHealPolicy.USER_MESSAGE)
+            if (_deviceState.value == DeviceState.LISTENING) {
+                stopListening()
+            }
+            return
+        }
+        dumpMicDiagnostics("SELF_HEAL_ROUND_$silentRounds")
+        addLog("⚠️ 检测到麦克风无输入，自动恢复中（第 $silentRounds/${MicSelfHealPolicy.MAX_SILENT_ROUNDS} 轮）...")
+        audioRecorder.stop()
+        kotlinx.coroutines.delay(400)
+        if (_deviceState.value == DeviceState.LISTENING) {
+            if (audioRecorder.start()) {
+                addLog("✅ 麦克风已重启，请说话")
+                scheduleMicHealthCheck() // 恢复后再自检一轮，确认真正恢复
+            } else {
+                dumpMicDiagnostics("SELF_HEAL_RESTART_FAIL")
+                addLog("❌ 麦克风恢复失败，请停止后重试（其他应用可能占用麦克风）")
+            }
+        }
+    }
+
+    // ==================== B4 兜底前台服务 ====================
+
+    /**
+     * B4 麦克风资格兜底：宠物悬浮窗未启用而后台聆听时，
+     * 进程内没有带 microphone 类型的前台服务，Android 11+ 的 while-in-use
+     * 策略会直接静音后台采集（录到全零）——这正是"桌面识别不到说话"的根因之一。
+     * 此时真正拉起 [XiaozhiForegroundService]（microphone 类型 FGS）兜底。
+     * 仅在宠物未显示时启动，避免与宠物服务的常驻通知重复。
+     */
+    private fun ensureMicForegroundService() {
+        if (FloatingPetService.petVisible) {
+            // 宠物 FGS 已带 MICROPHONE 类型，无需兜底
+            return
+        }
+        try {
+            val context = getApplication<Application>()
+            val intent = Intent(context, XiaozhiForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            micFallbackServiceStarted = true
+            Log.i(TAG, "B4: 宠物未启用，已拉起 XiaozhiForegroundService 兜底麦克风资格")
+        } catch (e: Exception) {
+            // 后台启动 FGS 可能被系统限制（无 SYSTEM_ALERT_WINDOW 豁免的场景），
+            // 失败不阻断聆听流程，由 B1/B2 的实证与提示兜底
+            Log.w(TAG, "B4: 启动兜底前台服务失败: ${e.message}")
+        }
+    }
+
+    /** 聆听结束后回收 B4 兜底前台服务（宠物未启用时） */
+    private fun maybeStopMicForegroundService() {
+        if (!micFallbackServiceStarted || FloatingPetService.petVisible) return
+        try {
+            getApplication<Application>().stopService(
+                Intent(getApplication(), XiaozhiForegroundService::class.java)
+            )
+            Log.i(TAG, "B4: 聆听结束，已停止兜底前台服务")
+        } catch (e: Exception) {
+            Log.w(TAG, "B4: 停止兜底前台服务失败: ${e.message}")
+        }
+        micFallbackServiceStarted = false
+    }
+
+    // ==================== B5 观测埋点 ====================
+
+    /**
+     * B5 观测埋点：出现全零/空 stt 等异常场景时输出诊断快照，形成用户反馈闭环。
+     * 内容：触发原因、当前音源、帧统计（帧数/最大绝对值/重建轮数）、
+     * 系统活跃采集会话摘要（activeRecordingConfigurations）、设备型号与系统版本。
+     * 同时写 logcat（供用户导出日志）与应用内日志面板（供用户截图反馈）。
+     */
+    private fun dumpMicDiagnostics(reason: String) {
+        try {
+            val snapshot = buildString {
+                append("[MicDiag] reason=").append(reason)
+                append(" | src=").append(audioRecorder.currentSourceName())
+                append(" | frames=").append(audioRecorder.framesReadSinceStart())
+                append(" | frameMax=").append(audioRecorder.frameMaxSinceStart())
+                append(" | rebuildRounds=").append(audioRecorder.silentRebuildRounds)
+                append(" | healRounds=").append(silentRounds)
+                append(" | cfgs=").append(micMonitor.dumpActiveConfigurations())
+                append(" | device=").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
+                append(" | android=").append(Build.VERSION.RELEASE)
+                    .append("(SDK ").append(Build.VERSION.SDK_INT).append(')')
+            }
+            Log.w(TAG, snapshot)
+            // 日志面板同步展示（截断防止面板溢出）
+            addLog("🩺 ${snapshot.take(160)}")
+        } catch (e: Exception) {
+            Log.w(TAG, "B5 诊断 dump 失败: ${e.message}")
         }
     }
 
@@ -911,6 +1064,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _deviceState.value = DeviceState.IDLE
         webSocketManager.sendListenStop()
         audioRecorder.stop()
+        // B2：聆听会话结束，重置连续静音轮数
+        silentRounds = 0
+        // B4：回收兜底前台服务（宠物未启用时）
+        maybeStopMicForegroundService()
         addLog("停止聆听")
     }
 

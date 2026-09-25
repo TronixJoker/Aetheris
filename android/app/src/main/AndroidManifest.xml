@@ -90,10 +90,18 @@
             android:supportsPictureInPicture="false"
             android:theme="@style/Theme.Xiaozhi" />
 
+        <!-- B4：兜底前台服务。显式声明 microphone|specialUse 类型，
+             与代码中 ServiceCompat.startForeground 传入的类型保持一致
+             （API 34+ 要求 startForeground 的类型必须是 Manifest 已声明类型的子集）；
+             specialUse 需配套 PROPERTY_SPECIAL_USE_FGS_SUBTYPE 属性说明用途 -->
         <service
             android:name=".audio.XiaozhiForegroundService"
-            android:foregroundServiceType="microphone"
-            android:exported="false" />
+            android:foregroundServiceType="microphone|specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Background voice listening fallback to keep microphone access eligibility" />
+        </service>
 
         <service
             android:name=".pet.FloatingPetService"

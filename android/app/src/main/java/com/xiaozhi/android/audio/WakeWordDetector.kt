@@ -49,6 +49,18 @@ class WakeWordDetector(
         private set
     private val handler = Handler(Looper.getMainLooper())
 
+    // ==================== B3 错误码分级状态 ====================
+    // 连续 ERROR_RECOGNIZER_BUSY 计数（用于指数退避 1s→2s→4s；会话成功建立后归零）
+    @Volatile private var busyAttempt = 0
+    // 连续 ERROR_AUDIO 计数（达到 [SpeechRetryPolicy.MAX_CONSECUTIVE_AUDIO_ERRORS] 后停止自动重启）
+    @Volatile private var consecutiveAudioErrors = 0
+
+    /**
+     * B3 致命错误回调（权限不足 / 连续音频错误导致停止自动重启时触发）。
+     * 由 ViewModel 注入，用于在应用内日志面板给用户明确提示。
+     */
+    var onErrorFatal: ((String) -> Unit)? = null
+
     fun start() {
         if (isRunning) return
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -117,7 +129,11 @@ class WakeWordDetector(
     }
 
     private inner class WakeRecognitionListener : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) {}
+        override fun onReadyForSpeech(params: Bundle?) {
+            // B3：新识别会话成功建立 → 重置错误分级计数，重新开始计算"连续错误"
+            busyAttempt = 0
+            consecutiveAudioErrors = 0
+        }
         override fun onBeginningOfSpeech() {}
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
@@ -135,8 +151,53 @@ class WakeWordDetector(
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "no_permission"
                 else -> "error_$error"
             }
-            Log.w(TAG, "识别错误: $errMsg, 重启中...")
-            handler.postDelayed({ if (isRunning) startListening() }, RESTART_DELAY_MS)
+
+            // ===== B3 错误码分级：按业界共识区分"可自愈"与"应停止" =====
+            when (SpeechRetryPolicy.classify(error)) {
+                SpeechRetryPolicy.Category.BUSY -> {
+                    // 识别器忙（典型：系统语音助手仍占用麦克风）：指数退避 1s→2s→4s，
+                    // 避免旧版 500ms 固定重启形成的"抢麦循环"
+                    val delay = SpeechRetryPolicy.busyBackoffDelayMs(busyAttempt)
+                    busyAttempt++
+                    Log.w(TAG, "识别错误: $errMsg, 指数退避 ${delay}ms 后重启（第 $busyAttempt 次 BUSY）")
+                    handler.postDelayed({ if (isRunning) startListening() }, delay)
+                }
+
+                SpeechRetryPolicy.Category.FATAL_NO_PERMISSION -> {
+                    // 权限不足：重试无意义，停止自动重启并明确提示
+                    isRunning = false
+                    Log.e(TAG, "识别错误: $errMsg，停止自动重启（缺少录音权限）")
+                    onErrorFatal?.invoke(SpeechRetryPolicy.noPermissionMessage())
+                }
+
+                SpeechRetryPolicy.Category.AUDIO_ERROR -> {
+                    // 音频错误：连续多次才停止（单次偶发仍按常规重启）
+                    consecutiveAudioErrors++
+                    if (SpeechRetryPolicy.shouldStopAutoRestart(consecutiveAudioErrors)) {
+                        isRunning = false
+                        Log.e(
+                            TAG,
+                            "识别错误: $errMsg（连续 $consecutiveAudioErrors 次），停止自动重启"
+                        )
+                        onErrorFatal?.invoke(
+                            SpeechRetryPolicy.audioErrorMessage(consecutiveAudioErrors)
+                        )
+                    } else {
+                        Log.w(
+                            TAG,
+                            "识别错误: $errMsg（连续 $consecutiveAudioErrors/" +
+                                "${SpeechRetryPolicy.MAX_CONSECUTIVE_AUDIO_ERRORS}），常规重启"
+                        )
+                        handler.postDelayed({ if (isRunning) startListening() }, RESTART_DELAY_MS)
+                    }
+                }
+
+                SpeechRetryPolicy.Category.ROUTINE -> {
+                    // no_match / speech_timeout / 网络抖动等常规错误：固定延迟正常重启
+                    Log.w(TAG, "识别错误: $errMsg, 重启中...")
+                    handler.postDelayed({ if (isRunning) startListening() }, RESTART_DELAY_MS)
+                }
+            }
         }
 
         override fun onResults(results: Bundle?) {
