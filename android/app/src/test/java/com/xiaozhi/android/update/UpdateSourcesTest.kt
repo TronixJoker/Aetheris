@@ -60,4 +60,47 @@ class UpdateSourcesTest {
         assertEquals(custom, sources.first().url)
         assertFalse(sources.drop(1).any { it.url == custom })
     }
+
+    // ===== 评审 R2：APK 下载候选源优先级回归测试 =====
+    // 结论要求：官方 raw 源最优先；gh-proxy/ghfast 第三方反代降至末位兜底，
+    // 且元数据未提供 SHA-256（allowThirdPartyMirror=false）时完全禁用。
+
+    private val apkRawUrl =
+        "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.6-arm64.apk"
+
+    @Test
+    fun `下载候选_官方raw源排第一`() {
+        val urls = UpdateManager.buildDownloadUrlCandidates(apkRawUrl, allowThirdPartyMirror = true)
+        assertEquals(apkRawUrl, urls.first())
+    }
+
+    @Test
+    fun `下载候选_第三方反代镜像降至末位`() {
+        val urls = UpdateManager.buildDownloadUrlCandidates(apkRawUrl, allowThirdPartyMirror = true)
+        assertEquals("gh-proxy 应排倒数第二", "gh-proxy.com", java.net.URI(urls[urls.size - 2]).host)
+        assertEquals("ghfast 应排最后", "ghfast.top", java.net.URI(urls.last()).host)
+        val mirrorIndex = urls.indexOfFirst { it.contains("gh-proxy.com") }
+        assertTrue("raw 源必须排在所有第三方镜像之前", urls.indexOf(apkRawUrl) < mirrorIndex)
+    }
+
+    @Test
+    fun `下载候选_元数据无哈希时禁用第三方镜像`() {
+        val urls = UpdateManager.buildDownloadUrlCandidates(apkRawUrl, allowThirdPartyMirror = false)
+        assertFalse("无校验能力时不得启用 gh-proxy 镜像", urls.any { it.contains("gh-proxy.com") })
+        assertFalse("无校验能力时不得启用 ghfast 镜像", urls.any { it.contains("ghfast.top") })
+        assertEquals("官方 raw 源仍然排第一", apkRawUrl, urls.first())
+    }
+
+    @Test
+    fun `下载候选_jsDelivr输入会反推raw并排第一`() {
+        val jsUrl = "https://cdn.jsdelivr.net/gh/TronixJoker/Aetheris@main/Aetheris-v2.3.6-arm64.apk"
+        val urls = UpdateManager.buildDownloadUrlCandidates(jsUrl, allowThirdPartyMirror = true)
+        assertEquals(apkRawUrl, urls.first())
+    }
+
+    @Test
+    fun `下载候选_无重复`() {
+        val urls = UpdateManager.buildDownloadUrlCandidates(apkRawUrl, allowThirdPartyMirror = true)
+        assertEquals(urls.size, urls.distinct().size)
+    }
 }

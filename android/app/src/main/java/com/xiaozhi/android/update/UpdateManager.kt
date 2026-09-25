@@ -67,6 +67,98 @@ class UpdateManager(private val context: Context) {
             }
             return sources
         }
+
+        /**
+         * 构建 APK 下载 URL 候选列表（评审 R2 调整，纯函数无副作用，可单元测试）。
+         *
+         * 优先级（评审结论：gh-proxy/ghfast 这类第三方拼接反代存在被劫持投毒风险，
+         * 由"最优先"降为"末位兜底"，且仅在下载后可做 SHA-256 校验时才启用）：
+         * 1. raw.githubusercontent.com —— 官方源，无 CDN 缓存，确保版本正确，永远最优先
+         * 2. jsDelivr CDN（cdn/fastly/gcore）—— 知名公共 CDN，缓存可能过期但由路径版本锁定
+         * 3. gh-proxy.com / ghfast.top —— 第三方反代镜像，仅作末位兜底；
+         *    allowThirdPartyMirror=false（元数据未提供 SHA-256）时完全不启用，
+         *    杜绝"既无校验又走高风险镜像"的供应链攻击面
+         *
+         * @param originalUrl 更新元数据下发的原始 APK 地址
+         * @param allowThirdPartyMirror 元数据是否提供了 SHA-256（可校验才允许走第三方镜像）
+         */
+        internal fun buildDownloadUrlCandidates(originalUrl: String, allowThirdPartyMirror: Boolean): List<String> {
+            val candidates = mutableListOf<String>()
+            val lowerUrl = originalUrl.lowercase()
+
+            // 先计算对应的 raw.githubusercontent.com URL（官方源，永远最优先）
+            var rawUrl: String? = null
+            var jsDelivrBaseUrl: String? = null
+
+            when {
+                lowerUrl.contains("raw.githubusercontent.com") -> {
+                    rawUrl = originalUrl
+                    // 反推出 jsDelivr URL
+                    jsDelivrBaseUrl = originalUrl
+                        .replaceFirst("https://raw.githubusercontent.com/", "https://cdn.jsdelivr.net/gh/")
+                        .replaceFirst("/main/", "@main/")
+                        .replaceFirst("/master/", "@master/")
+                }
+                lowerUrl.contains("cdn.jsdelivr.net") -> {
+                    jsDelivrBaseUrl = originalUrl
+                    // 转成 raw 格式
+                    rawUrl = originalUrl
+                        .replaceFirst("https://cdn.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                        .replaceFirst("@main", "/main")
+                        .replaceFirst("@master", "/master")
+                        .replaceFirst("@latest", "/main")
+                }
+                lowerUrl.contains("fastly.jsdelivr.net") -> {
+                    jsDelivrBaseUrl = originalUrl.replaceFirst("https://fastly.jsdelivr.net/", "https://cdn.jsdelivr.net/")
+                    rawUrl = originalUrl
+                        .replaceFirst("https://fastly.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                        .replaceFirst("@main", "/main")
+                        .replaceFirst("@master", "/master")
+                }
+                lowerUrl.contains("gcore.jsdelivr.net") -> {
+                    jsDelivrBaseUrl = originalUrl.replaceFirst("https://gcore.jsdelivr.net/", "https://cdn.jsdelivr.net/")
+                    rawUrl = originalUrl
+                        .replaceFirst("https://gcore.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
+                        .replaceFirst("@main", "/main")
+                        .replaceFirst("@master", "/master")
+                }
+                else -> {
+                    // 未知 URL，原封不动
+                    rawUrl = originalUrl
+                }
+            }
+
+            // 1. 最优先：官方 raw 源（无 CDN 缓存，100% 是最新版本，国内可能慢）
+            rawUrl?.let { raw ->
+                if (raw !in candidates) candidates.add(raw)
+            }
+
+            // 2. 其次：jsDelivr CDN 镜像（知名公共 CDN，有缓存过期风险但非恶意注入面）
+            jsDelivrBaseUrl?.let { base ->
+                // cdn.jsdelivr.net
+                if (base !in candidates) candidates.add(base)
+                // fastly.jsdelivr.net
+                val fastlyUrl = base.replaceFirst("https://cdn.jsdelivr.net/", "https://fastly.jsdelivr.net/")
+                if (fastlyUrl !in candidates) candidates.add(fastlyUrl)
+                // gcore.jsdelivr.net
+                val gcoreUrl = base.replaceFirst("https://cdn.jsdelivr.net/", "https://gcore.jsdelivr.net/")
+                if (gcoreUrl !in candidates) candidates.add(gcoreUrl)
+            }
+
+            // 3. 末位兜底：第三方 GitHub 反代镜像（ghproxy.net 已实测不可用，移除减少无效等待）。
+            //    仅在元数据提供 SHA-256、下载后可校验完整性时启用（评审 R2）
+            if (allowThirdPartyMirror) {
+                rawUrl?.let { raw ->
+                    candidates.add("https://gh-proxy.com/$raw")
+                    candidates.add("https://ghfast.top/$raw")
+                }
+            }
+
+            // 如果 candidates 为空，兜底用 originalUrl
+            if (candidates.isEmpty()) candidates.add(originalUrl)
+
+            return candidates
+        }
     }
 
     /**
@@ -134,6 +226,9 @@ class UpdateManager(private val context: Context) {
     private var downloadJob: Job? = null
     private var pendingApkFile: File? = null
     private var lastDownloadedUrl: String? = null
+    // 本次下载的预期 SHA-256（评审 R2）。null = 元数据未提供哈希：
+    // 此时跳过校验，且第三方反代镜像会被禁用（只从官方/知名 CDN 源下载）
+    private var pendingExpectedSha256: String? = null
 
     enum class UpdateState {
         IDLE, CHECKING, NO_UPDATE, UPDATE_AVAILABLE, DOWNLOADING, DOWNLOAD_COMPLETE, INSTALLING, NEED_PERMISSION, ERROR
@@ -146,6 +241,11 @@ class UpdateManager(private val context: Context) {
         val downloadUrl: String = "",
         // 32 位 ARM 专用包（ABI 拆分瘦身）。无此字段或为空时回退 downloadUrl（通用包）
         val downloadUrlArm32: String = "",
+        // 完整性校验（评审 R2）：对应 APK 的 SHA-256 十六进制摘要（校验时大小写不敏感）。
+        // 旧版 update.json 无此字段时为空串 → 下载后跳过哈希校验，
+        // 但同时禁用第三方反代镜像（见 buildDownloadUrlCandidates），避免"无校验+走镜像"的不安全组合
+        val sha256: String = "",
+        val sha256Arm32: String = "",
         val changelog: String = ""
     )
 
@@ -153,7 +253,9 @@ class UpdateManager(private val context: Context) {
         val hasUpdate: Boolean = false,
         val versionName: String = "",
         val changelog: String = "",
-        val downloadUrl: String = ""
+        val downloadUrl: String = "",
+        // 与 downloadUrl 配套的预期 SHA-256（元数据未提供时为空串）
+        val sha256: String = ""
     )
 
     fun checkForUpdates(updateUrl: String = UPDATE_INFO_URL, callback: (UpdateResult) -> Unit) {
@@ -281,12 +383,15 @@ class UpdateManager(private val context: Context) {
             Log.d(TAG, "Best versionCode=${finalInfo.versionCode} from $successCount sources (current=$currentVersionCode, reliable=$reliableSuccessCount, cache=$cacheSuccessCount)")
 
             if (finalInfo.versionCode > currentVersionCode) {
+                // 选定设备匹配的下载目标（URL + 配套 SHA-256，一并透传给下载流程）
+                val deviceDownload = pickDownloadForDevice(finalInfo)
                 _updateState.value = UpdateState.UPDATE_AVAILABLE
                 callback(UpdateResult(
                     hasUpdate = true,
                     versionName = finalInfo.versionName,
                     changelog = finalInfo.changelog,
-                    downloadUrl = pickDownloadUrlForDevice(finalInfo)
+                    downloadUrl = deviceDownload.url,
+                    sha256 = deviceDownload.sha256
                 ))
             } else {
                 _updateState.value = UpdateState.NO_UPDATE
@@ -304,11 +409,13 @@ class UpdateManager(private val context: Context) {
     }
 
     /**
-     * 按设备 CPU 架构选择对应 APK 下载地址（ABI 拆分瘦身）。
+     * 按设备 CPU 架构选定最终下载目标（URL + 配套的预期 SHA-256，ABI 拆分瘦身）。
      * - 32 位设备（仅 armeabi-v7a）→ downloadUrlArm32（无则回退通用包）
      * - 64 位设备 → downloadUrl
      */
-    private fun pickDownloadUrlForDevice(info: UpdateInfo): String {
+    internal data class DeviceDownload(val url: String, val sha256: String)
+
+    internal fun pickDownloadForDevice(info: UpdateInfo): DeviceDownload {
         return try {
             val abis = Build.SUPPORTED_ABIS ?: emptyArray()
             val is32BitOnly = abis.isNotEmpty() &&
@@ -316,25 +423,38 @@ class UpdateManager(private val context: Context) {
                 abis.any { it.contains("armeabi") }
             if (is32BitOnly && info.downloadUrlArm32.isNotBlank()) {
                 Log.d(TAG, "32-bit device, using arm32 APK: ${info.downloadUrlArm32}")
-                info.downloadUrlArm32
+                DeviceDownload(info.downloadUrlArm32, info.sha256Arm32)
             } else {
-                info.downloadUrl
+                DeviceDownload(info.downloadUrl, info.sha256)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to pick ABI-specific URL, fallback: ${e.message}")
-            info.downloadUrl
+            DeviceDownload(info.downloadUrl, info.sha256)
         }
     }
 
-    fun downloadUpdate(downloadUrl: String) {
+    /**
+     * 下载更新包。
+     * @param downloadUrl 更新元数据下发的 APK 地址
+     * @param expectedSha256 预期 SHA-256（评审 R2 新增，元数据未提供时传 null/空串）
+     */
+    fun downloadUpdate(downloadUrl: String, expectedSha256: String? = null) {
         _updateState.value = UpdateState.DOWNLOADING
         _downloadProgress.value = 0
         _downloadSize.value = "0 MB"
+        // 归一化：空串/纯空白视为"未提供"，避免无效哈希参与比较
+        pendingExpectedSha256 = expectedSha256?.trim()?.takeIf { it.isNotEmpty() }
         downloadJob = scope.launch {
             // 安全兜底：下载流程的任何异常都不允许崩溃 APP
             try {
-            // 构建备用下载 URL 列表：原始 URL + jsDelivr 镜像切换
-            val downloadUrls = buildDownloadUrlCandidates(downloadUrl)
+            // 构建备用下载 URL 列表：官方源最优先；
+            // 第三方反代镜像仅在"下载后能做 SHA-256 校验"时才允许启用（评审 R2）
+            val allowThirdPartyMirror = pendingExpectedSha256 != null
+            val downloadUrls = buildDownloadUrlCandidates(downloadUrl, allowThirdPartyMirror)
+            Log.d(TAG, "Download URL candidates (mirror=$allowThirdPartyMirror): $downloadUrls")
+            if (!allowThirdPartyMirror) {
+                Log.w(TAG, "Metadata has no sha256: third-party mirrors disabled, integrity check skipped")
+            }
 
             var lastError: Exception? = null
             for ((index, url) in downloadUrls.withIndex()) {
@@ -421,6 +541,22 @@ class UpdateManager(private val context: Context) {
                         continue
                     }
 
+                    // 安全校验（评审 R2）：流式计算 SHA-256，与元数据一致才允许进入安装流程。
+                    // 不匹配视为该源被污染/回源错误：删除本地文件并切换下一候选源
+                    if (pendingExpectedSha256 != null) {
+                        val actualSha256 = sha256OfFile(apkFile)
+                        if (!actualSha256.equals(pendingExpectedSha256, ignoreCase = true)) {
+                            Log.e(TAG, "SHA-256 mismatch from $host! expected=$pendingExpectedSha256 actual=$actualSha256, discard and try next source")
+                            apkFile.delete()
+                            response.close()
+                            lastError = Exception("SHA-256 mismatch (source: $host)")
+                            continue
+                        }
+                        Log.d(TAG, "SHA-256 verified OK: $actualSha256")
+                    } else {
+                        Log.w(TAG, "No expected sha256 in metadata, install without integrity check (source: $host)")
+                    }
+
                     Log.d(TAG, "Download complete, file size=${apkFile.length()}")
                     _downloadProgress.value = 100
                     _updateState.value = UpdateState.DOWNLOAD_COMPLETE
@@ -442,83 +578,20 @@ class UpdateManager(private val context: Context) {
     }
 
     /**
-     * 构建下载 URL 候选列表：优先无缓存源(raw.githubusercontent.com)，CDN 镜像作备用
-     * 核心原则：raw 源永远排第一（无 CDN 缓存，确保版本正确），CDN 仅在 raw 失败时使用
+     * 流式计算文件 SHA-256（十六进制小写，评审 R2）。
+     * 分块读取，避免大体积 APK 整体载入内存。
      */
-    private fun buildDownloadUrlCandidates(originalUrl: String): List<String> {
-        val candidates = mutableListOf<String>()
-        val lowerUrl = originalUrl.lowercase()
-
-        // 先计算对应的 raw.githubusercontent.com URL（永远最优先）
-        var rawUrl: String? = null
-        var jsDelivrBaseUrl: String? = null
-
-        when {
-            lowerUrl.contains("raw.githubusercontent.com") -> {
-                rawUrl = originalUrl
-                // 反推出 jsDelivr URL
-                jsDelivrBaseUrl = originalUrl
-                    .replaceFirst("https://raw.githubusercontent.com/", "https://cdn.jsdelivr.net/gh/")
-                    .replaceFirst("/main/", "@main/")
-                    .replaceFirst("/master/", "@master/")
-            }
-            lowerUrl.contains("cdn.jsdelivr.net") -> {
-                jsDelivrBaseUrl = originalUrl
-                // 转成 raw 格式
-                rawUrl = originalUrl
-                    .replaceFirst("https://cdn.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
-                    .replaceFirst("@main", "/main")
-                    .replaceFirst("@master", "/master")
-                    .replaceFirst("@latest", "/main")
-            }
-            lowerUrl.contains("fastly.jsdelivr.net") -> {
-                jsDelivrBaseUrl = originalUrl.replaceFirst("https://fastly.jsdelivr.net/", "https://cdn.jsdelivr.net/")
-                rawUrl = originalUrl
-                    .replaceFirst("https://fastly.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
-                    .replaceFirst("@main", "/main")
-                    .replaceFirst("@master", "/master")
-            }
-            lowerUrl.contains("gcore.jsdelivr.net") -> {
-                jsDelivrBaseUrl = originalUrl.replaceFirst("https://gcore.jsdelivr.net/", "https://cdn.jsdelivr.net/")
-                rawUrl = originalUrl
-                    .replaceFirst("https://gcore.jsdelivr.net/gh/", "https://raw.githubusercontent.com/")
-                    .replaceFirst("@main", "/main")
-                    .replaceFirst("@master", "/master")
-            }
-            else -> {
-                // 未知 URL，原封不动
-                rawUrl = originalUrl
+    private fun sha256OfFile(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
             }
         }
-
-        // 1. 最优先：国内 GitHub 代理镜像（国内访问快，无 CDN 缓存，确保最新版本）
-        //    ghproxy.net 已实测不可用（连接超时），移除减少无效等待
-        if (rawUrl != null) {
-            candidates.add("https://gh-proxy.com/$rawUrl")
-            candidates.add("https://ghfast.top/$rawUrl")
-        }
-
-        // 2. 其次：raw.githubusercontent.com（无 CDN 缓存，100%是最新版本，国内可能慢）
-        if (rawUrl != null && rawUrl !in candidates) candidates.add(rawUrl)
-
-        // 3. 然后：jsDelivr CDN 镜像（有缓存风险，但国内速度快）
-        if (jsDelivrBaseUrl != null) {
-            // cdn.jsdelivr.net
-            val cdnUrl = jsDelivrBaseUrl
-            if (cdnUrl !in candidates) candidates.add(cdnUrl)
-            // fastly.jsdelivr.net
-            val fastlyUrl = jsDelivrBaseUrl.replaceFirst("https://cdn.jsdelivr.net/", "https://fastly.jsdelivr.net/")
-            if (fastlyUrl !in candidates) candidates.add(fastlyUrl)
-            // gcore.jsdelivr.net
-            val gcoreUrl = jsDelivrBaseUrl.replaceFirst("https://cdn.jsdelivr.net/", "https://gcore.jsdelivr.net/")
-            if (gcoreUrl !in candidates) candidates.add(gcoreUrl)
-        }
-
-        // 如果 candidates 为空，兜底用 originalUrl
-        if (candidates.isEmpty()) candidates.add(originalUrl)
-
-        Log.d(TAG, "Download URL candidates (priority order): $candidates")
-        return candidates
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun installApk(apkFile: File) {

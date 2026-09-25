@@ -6,8 +6,13 @@ import okhttp3.Request
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.URLEncoder
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -22,12 +27,23 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Range 请求（MediaPlayer seek 时使用）
  * - 流式转发（边下边播，无需等待完整下载）
  * - 自定义请求头透传
+ *
+ * 安全（代码评审 R1 修复）：
+ * - 只绑定 loopback（127.0.0.1）。此前 ServerSocket(p) 默认绑定 0.0.0.0，
+ *   同一 Wi-Fi 下任意设备可无鉴权借用本机发起任意 HTTP 请求（SSRF 跳板/内网探测）。
+ *   MediaPlayer 与本代理同进程/同设备，绑定 loopback 不影响任何功能。
+ * - 使用固定大小线程池处理连接，替代"每连接开线程"，防止连接洪泛耗尽线程资源。
  */
 class LocalAudioProxyServer {
     companion object {
         private const val TAG = "LocalAudioProxy"
         private const val START_PORT = 18080
         private const val MAX_PORT_ATTEMPTS = 20
+
+        // 固定线程池参数：音频流并发连接只会来自本机 MediaPlayer（seek 时可能重连），
+        // 4 个工作线程 + 32 长度的等待队列已绰绰有余，超出即快速拒绝并关闭连接
+        private const val POOL_SIZE = 4
+        private const val POOL_QUEUE_CAPACITY = 32
     }
 
     private val client = OkHttpClient.Builder()
@@ -37,6 +53,8 @@ class LocalAudioProxyServer {
 
     private var serverSocket: ServerSocket? = null
     private var listenThread: Thread? = null
+    // 固定工作线程池（start 时创建、stop 时回收），替代每连接裸开线程
+    private var workerPool: ThreadPoolExecutor? = null
     private val running = AtomicBoolean(false)
     private var port: Int = 0
 
@@ -55,9 +73,14 @@ class LocalAudioProxyServer {
             for (offset in 0 until MAX_PORT_ATTEMPTS) {
                 val p = START_PORT + offset
                 try {
-                    bound = ServerSocket(p)
+                    // 安全修复（评审 R1）：显式绑定 loopback。
+                    // 原 ServerSocket(p) 默认绑定 0.0.0.0（所有网卡），会把无鉴权代理暴露给整个局域网；
+                    // MediaPlayer 只在本机通过 127.0.0.1 访问，绑 loopback 功能完全等价。
+                    bound = ServerSocket().apply {
+                        bind(InetSocketAddress(InetAddress.getLoopbackAddress(), p))
+                    }
                     boundPort = p
-                    Log.d(TAG, "Bound to port $p")
+                    Log.d(TAG, "Bound to 127.0.0.1:$p (loopback only)")
                     break
                 } catch (e: Exception) {
                     Log.d(TAG, "Port $p unavailable, try next: ${e.message}")
@@ -71,12 +94,26 @@ class LocalAudioProxyServer {
             port = boundPort
             running.set(true)
 
+            // 固定线程池：避免连接洪泛时无限开线程（评审 R1 建议）
+            workerPool = ThreadPoolExecutor(
+                POOL_SIZE, POOL_SIZE,
+                30L, TimeUnit.SECONDS,
+                LinkedBlockingQueue(POOL_QUEUE_CAPACITY)
+            ) { r ->
+                Thread(r, "LocalAudioProxy-Worker").apply { isDaemon = true }
+            }
+
             listenThread = Thread({
                 while (running.get()) {
                     try {
                         val socket = bound.accept()
-                        // 每个连接开线程处理，避免阻塞主监听
-                        Thread { handleClient(socket) }.start()
+                        // 工作线程池处理，避免阻塞主监听；池满则快速拒绝并关闭
+                        try {
+                            workerPool?.execute { handleClient(socket) }
+                        } catch (e: RejectedExecutionException) {
+                            Log.w(TAG, "Worker pool saturated, reject connection")
+                            try { socket.close() } catch (_: Exception) {}
+                        }
                     } catch (e: Exception) {
                         if (running.get()) {
                             Log.w(TAG, "Accept failed: ${e.message}")
@@ -127,6 +164,9 @@ class LocalAudioProxyServer {
         }
         serverSocket = null
         listenThread = null
+        // 回收工作线程池；进行中的转发任务会被中断，其 finally 分支负责关闭对应 socket
+        workerPool?.shutdownNow()
+        workerPool = null
         port = 0
         Log.d(TAG, "Proxy stopped")
     }
