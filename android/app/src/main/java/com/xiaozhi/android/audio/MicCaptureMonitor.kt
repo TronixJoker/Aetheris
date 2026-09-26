@@ -41,7 +41,11 @@ object MicCapturePolicy {
      *
      * @param configs 当前活跃采集会话列表
      * @param ownSessionIds 需要排除的"自己"会话 ID（例如 AudioRecord.audioSessionId；
-     *        空集表示本 APP 尚无自己的采集会话，此时任何会话都算他方）
+     *        空集表示无法排除任何会话，此时任何会话都算他方）。
+     *        注意：AudioRecordingCallback 会回调本 APP 自身的录音会话，且公开 API
+     *        无法按 UID 区分调用方，调用方必须传入自身会话集（见
+     *        AudioRecorder.activeAudioSessionIds()），否则会把自己上一轮的
+     *        VOICE_COMMUNICATION 会话误判为他方（v2.3.7 回归根因之一）
      */
     fun hasOtherPartyClients(configs: List<MicClientInfo>, ownSessionIds: Set<Int> = emptySet()): Boolean =
         configs.any { it.sessionId !in ownSessionIds }
@@ -142,11 +146,19 @@ class MicCaptureMonitor(private val audioManager: AudioManager) {
         }
 
     /**
-     * 挂起等待麦克风空闲（无他方采集客户端），事件驱动 + 100ms 轮询兜底。
+     * B1 观测等待：挂起等待"无他方采集客户端"（事件驱动 + 100ms 轮询兜底）。
      *
-     * @param timeoutMs 最长等待时间（默认 2s，对应方案 B1）
-     * @param ownSessionIds 需要排除的自己会话 ID（一般传空：等待时本 APP 尚未开录）
-     * @return true = 麦克风已空闲可启动；false = 超时仍被占用，调用方应明确提示并终止
+     * ⚠️ v2.3.7 回归修复：本方法结果已降级为「提示」语义——
+     * false 只代表"等待超时时仍观测到疑似他方会话"，调用方【不得】据此取消本次聆听：
+     *   - 观测结果可能误判（自身会话残留无法从公开 API 与他方区分，仅能按会话 ID 排除）；
+     *   - 部分机型系统 SpeechRecognizer 常驻不释放，等待多久都不会空闲；
+     * 麦克风真伪由 B2 首帧实证判定（真实被抢占必然录到全零，可自愈）。
+     *
+     * @param timeoutMs 最长观测等待时间（默认 2s）
+     * @param ownSessionIds 需要排除的自身会话 ID（AudioRecorder.activeAudioSessionIds()；
+     *        AudioRecordingCallback 会回调自身录音会话，不排除会把上一轮自己的
+     *        VOICE_COMMUNICATION 会话误判为他方）
+     * @return true = 观测窗口内麦克风已空闲；false = 超时仍观测到疑似他方会话（仅提示用）
      */
     suspend fun awaitMicFree(
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,

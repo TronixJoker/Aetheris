@@ -98,20 +98,44 @@ class WakeWordDetector(
         }
     }
 
+    /**
+     * 停止热词检测并释放系统 SpeechRecognizer 占用的麦克风。
+     *
+     * v2.3.7 回归修复：改为「主线程同步执行，非主线程才投递」。
+     * 旧实现无条件 handler.post，导致调用方（ViewModel 开始聆听流程）停完就立刻
+     * 读 activeRecordingConfigurations，此时停止动作还在主线程队列里排队，
+     * 热词识别器（系统 SpeechRecognizer）的采集会话必然还在列表里；
+     * 叠加部分 ROM 识别服务释放缓慢/常驻不释放，B1 预检必然超时。
+     * 同步执行后，本函数返回时 stopListening/destroy 已发出，
+     * 再配合调用方的小段归还真窗口，B1 才能观测到真实的释放过程。
+     *
+     * 同时 removeCallbacks 清空本检测器 handler 上排队的历史任务
+     *（BUSY 退避重启、startListening 失败重启、尚未执行的 start 投递），
+     * 杜绝「刚 stop 完，队列里的旧任务又把识别器拉起来抢麦克风」的竞态。
+     */
     fun stop() {
-        handler.post {
-            isRunning = false
-            // 记录麦克风开始释放的时刻（stopListening/destroy 后系统异步归还音频输入）
-            lastMicReleaseTimeMs = android.os.SystemClock.elapsedRealtime()
-            try {
-                speechRecognizer?.stopListening()
-                speechRecognizer?.destroy()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping: ${e.message}")
-            }
-            speechRecognizer = null
-            Log.i(TAG, "热词检测已停止")
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopInternal()
+        } else {
+            handler.post { stopInternal() }
         }
+    }
+
+    private fun stopInternal() {
+        // 先置位再清队列：让任何已排队但尚未执行的任务因 isRunning=false 而自行放弃
+        isRunning = false
+        handler.removeCallbacksAndMessages(null)
+        // 记录麦克风开始释放的时刻（stopListening/destroy 后系统异步归还音频输入）
+        lastMicReleaseTimeMs = android.os.SystemClock.elapsedRealtime()
+        try {
+            speechRecognizer?.stopListening()
+            // destroy 确保识别器真正归还音频输入（仅 stopListening 部分机型不释放）
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping: ${e.message}")
+        }
+        speechRecognizer = null
+        Log.i(TAG, "热词检测已停止")
     }
 
     private fun checkWakeWord(text: String): Boolean {

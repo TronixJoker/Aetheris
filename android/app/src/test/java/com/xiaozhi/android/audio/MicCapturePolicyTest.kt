@@ -59,6 +59,46 @@ class MicCapturePolicyTest {
         assertTrue(MicCapturePolicy.hasOtherPartyClients(configs, ownSessionIds = setOf(77)))
     }
 
+    // ---------- v2.3.7 回归修复锁定用例（B1 自身会话误判） ----------
+
+    @Test
+    fun `回归 - 自家VOICE_COMMUNICATION会话残留期被正确排除`() {
+        // 用户实机埋点：B1 超时 dump 显示 sess=10489 src=VOICE_COMMUNICATION——
+        // 正是本 APP 上一轮 AudioRecord 的音源特征。修复前调用方传空排除集，
+        // 自家残留会话被判"他方占用"→ 2s 超时 → 取消聆听（点按开始对话必失败）。
+        // 修复后调用方传入 AudioRecorder.activeAudioSessionIds()，残留会话应被排除。
+        val configs = listOf(client(10489, MediaRecorder.AudioSource.VOICE_COMMUNICATION))
+        assertFalse(
+            "自身会话（含释放后列表残留期）不得判为他方",
+            MicCapturePolicy.hasOtherPartyClients(
+                configs,
+                ownSessionIds = setOf(10489) // AudioRecorder.lastAudioSessionId
+            )
+        )
+    }
+
+    @Test
+    fun `回归 - 自家残留会话之外仍有真他方时必须如实上报占用`() {
+        // 排除自身会话的能力不能掩盖真实的他方占用：
+        // 自家 VOICE_COMMUNICATION 残留 + 系统 SpeechRecognizer（VOICE_RECOGNITION）仍在采集
+        val configs = listOf(
+            client(10489, MediaRecorder.AudioSource.VOICE_COMMUNICATION), // 自己（残留）
+            client(20001, MediaRecorder.AudioSource.VOICE_RECOGNITION)    // 热词识别服务
+        )
+        assertTrue(
+            "排除自身后仍存在他方会话时必须如实判定被占用（由 B2 实证兜底）",
+            MicCapturePolicy.hasOtherPartyClients(configs, ownSessionIds = setOf(10489))
+        )
+    }
+
+    @Test
+    fun `契约 - 未传排除集时任何会话仍算他方（行为不变）`() {
+        // 空排除集 = 无法区分自身与他方，维持保守判定（与 v2.3.7 语义一致），
+        // 修复发生在调用方（传入自身会话集），策略层语义保持不变
+        val configs = listOf(client(10489, MediaRecorder.AudioSource.VOICE_COMMUNICATION))
+        assertTrue(MicCapturePolicy.hasOtherPartyClients(configs))
+    }
+
     // ---------- AudioSource 可读名映射 ----------
 
     @Test

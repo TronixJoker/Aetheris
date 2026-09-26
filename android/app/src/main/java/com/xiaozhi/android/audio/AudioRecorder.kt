@@ -105,6 +105,25 @@ class AudioRecorder(private val context: Context) {
 
     fun isRunning(): Boolean = isRecording
 
+    // ==================== 自身采集会话 ID 追踪（B1 误判修复） ====================
+    // AudioManager.activeRecordingConfigurations / AudioRecordingCallback 会把本 APP
+    // 自己的 AudioRecord 会话也上报（AudioRecordingConfiguration 无公开 UID 可区分调用方）。
+    // v2.3.7 的 B1 未排除自身会话：上一轮 AudioRecord（VOICE_COMMUNICATION 音源，
+    // 对应用户埋点 sess=10489 src=VOICE_COMMUNICATION）在列表残留期间被误判为"他方占用"。
+    // 记录最近一次创建的会话 ID 供 B1 判定时排除。
+    @Volatile
+    private var lastAudioSessionId: Int = 0
+
+    /**
+     * 当前/最近一次自身采集会话 ID 集合（供 MicCaptureMonitor.awaitMicFree 排除自身）。
+     *
+     * 注意：AudioRecord.stop/release 后不主动清零——audioserver 的活跃会话列表更新
+     * 存在毫秒级滞后，残留期间恰好需要用它排除"自己刚释放的会话"；
+     * 音频会话 ID 由系统全局递增分配、几乎不会被复用，保留旧值无副作用。
+     */
+    fun activeAudioSessionIds(): Set<Int> =
+        if (lastAudioSessionId != 0) setOf(lastAudioSessionId) else emptySet()
+
     fun start(): Boolean {
         if (!hasPermission()) {
             Log.w(TAG, "No RECORD_AUDIO permission")
@@ -130,6 +149,9 @@ class AudioRecorder(private val context: Context) {
                 )
                 .setBufferSizeInBytes(bufferSize)
                 .build()
+
+            // 记录自身会话 ID（B1 排除自身会话用）
+            audioRecord?.let { lastAudioSessionId = it.audioSessionId }
 
             // 尝试启用回声消除（AEC）、噪声抑制（NS）和自动增益（AGC）
             // 减少小智自己的 TTS 声音被 VAD 误检测为用户说话
@@ -318,6 +340,8 @@ class AudioRecorder(private val context: Context) {
             }
             newRecord.startRecording()
             audioRecord = newRecord
+            // 音源降级重建出的是新 AudioRecord 实例 → 会话 ID 变化，同步更新自身会话记录
+            lastAudioSessionId = newRecord.audioSessionId
             // 重置诊断统计：让 ViewModel 的麦克风健康自检以新音源重新评估
             framesSinceStart = 0
             maxAbsSinceStart = 0

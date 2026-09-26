@@ -35,9 +35,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val TAG = "MainViewModel"
         private val json = Json { ignoreUnknownKeys = true }
 
-        // B1：启动聆听前等待"无他方采集客户端"的最长时间（方案 B1 规格：最多等 2s，
-        // 超时明确提示并取消本次聆听，不再用旧版 400/600/500ms 经验值瞎等）
+        // B1：启动聆听前观测"疑似他方采集客户端"的最长等待（方案 B1 规格：最多等 2s。
+        // v2.3.7 回归修复后 B1 降级为「提示不拦截」——超时仅提示，不再取消本次聆听，
+        // 麦克风真伪由 B2 首帧实证判定）
         private const val MIC_FREE_WAIT_TIMEOUT_MS = 2000L
+
+        // B1 配套：热词检测器停止后给系统 SpeechRecognizer 的麦克风归还窗口。
+        // 识别器 stopListening/destroy 后系统异步归还音频输入，短暂等待可显著降低
+        // B1 观测到残留会话的概率（等待期间事件驱动，不会阻塞真实释放事件）
+        private const val WAKE_RELEASE_GRACE_MS = 200L
     }
 
     private val configManager = ConfigManager(application)
@@ -885,6 +891,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun tryStartListeningInternal() {
+        // 已在聆听中 → 忽略重复触发（多路径并发：自动续听 / 热词唤醒 / 手动点按 / 桌面宠物）
+        if (_deviceState.value == DeviceState.LISTENING) return
         val wsState = webSocketManager.connectionState.value
         if (wsState != WebSocketManager.ConnectionState.CONNECTED) {
             addLog("⚠️ 仍未连接，稍后重试")
@@ -898,19 +906,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addLog("⚠️ 音频通道未就绪，请稍候再试...")
             return
         }
-        // ===== B1 事件驱动等待（替代旧版 400/600/500ms 固定延时猜测） =====
-        // 1) 先停热词检测器（系统 SpeechRecognizer 独占麦克风，destroy 归还是异步的）；
-        // 2) 通过 AudioRecordingCallback 校验 activeRecordingConfigurations 已无他方采集
-        //    客户端后再启动 AudioRecord，最多等 2s，超时明确提示。
-        // 依据：官方"共享音频输入"机制——他方客户端（尤其是系统识别服务）仍在采集时，
-        // Android 10+ 的并发捕获策略会把本 APP 的采集静音（录到全零），等多久都没用。
+        // ===== B1 观测等待（v2.3.7 回归修复：降级为「提示不拦截」） =====
+        // 回归根因（两个都成立，任一都会导致误判）：
+        // 1) 自身会话误判：AudioManager.activeRecordingConfigurations /
+        //    AudioRecordingCallback 会把本 APP 自己的 AudioRecord 会话也上报，
+        //    且 AudioRecordingConfiguration 无公开 UID 可区分调用方。上一轮录音的
+        //    VOICE_COMMUNICATION 会话在列表中残留（或尚未释放）时被算作"他方"——
+        //    用户埋点 sess=10489 src=VOICE_COMMUNICATION 正是自家音源特征；
+        // 2) 系统 SpeechRecognizer 常驻不释放：热词检测器停掉后，系统识别服务的
+        //    采集会话释放是异步的且部分 ROM 长时间不归还，2s 预检必然超时。
+        // 旧逻辑超时即取消本次聆听 → 用户点按开始对话必然失败 → 完全无法对话。
+        //
+        // 修复原则：B1 只做观测与短暂等待，超时仅提示，绝不拦截本次聆听；
+        // 麦克风真伪由 B2 首帧实证判定（300ms 全零 → 换音源重建 → 轮次上限自愈）。
+        // 1) 先停热词检测器：stop() 已改为主线程同步执行（stopListening + destroy
+        //    + removeCallbacks 清退队列里的重启任务），返回时释放动作已发出；
+        // 2) 取消挂起的 wakeWordJob：防止 B1 等待期间 IDLE 态的 2s 定时任务
+        //    又把热词检测器拉起来抢麦克风（状态此时仍为 IDLE）。
         val wakeDetector = wakeWordDetector
+        wakeWordJob?.cancel()
+        val wakeWasRunning = wakeDetector?.isRunning == true
         wakeDetector?.stop()
-        if (!micMonitor.awaitMicFree(MIC_FREE_WAIT_TIMEOUT_MS)) {
-            dumpMicDiagnostics("B1_WAIT_TIMEOUT")
-            addLog("❌ 麦克风被其他应用/系统服务占用（等待 ${MIC_FREE_WAIT_TIMEOUT_MS / 1000}s 超时），已取消本次聆听")
-            Log.w(TAG, "B1 等待超时: ${micMonitor.dumpActiveConfigurations()}")
-            return
+        if (wakeWasRunning) {
+            // 给系统一小段归还窗口：SpeechRecognizer 释放是异步的，
+            // 200ms 足够让 destroy 的释放动作反映到活跃会话列表，
+            // 避免 B1 一进等待就撞上必然存在的残留会话而白耗等待预算
+            kotlinx.coroutines.delay(WAKE_RELEASE_GRACE_MS)
+        }
+        // 3) 排除自身会话后再判定（AudioRecorder 记录了最近一次自身 AudioRecord 会话 ID）
+        if (!micMonitor.awaitMicFree(MIC_FREE_WAIT_TIMEOUT_MS, audioRecorder.activeAudioSessionIds())) {
+            // ⚠️ 降级语义：仅观测埋点 + 用户提示，仍照常启动录音；
+            //    真被抢占时 B2 首帧实证（全零）会自动自愈或明确给出占用结论
+            dumpMicDiagnostics("B1_BUSY_HINT")
+            addLog("⚠️ 麦克风可能被其他应用/系统服务占用（等待 ${MIC_FREE_WAIT_TIMEOUT_MS / 1000}s），仍尝试启动聆听；若录到静音将自动自愈")
+            Log.w(TAG, "B1 疑似占用（不拦截）: ${micMonitor.dumpActiveConfigurations()}")
         }
 
         // ===== B4 麦克风资格兜底：宠物悬浮窗未启用时拉起 microphone 类型前台服务 =====
