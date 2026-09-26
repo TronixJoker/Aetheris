@@ -314,11 +314,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 启动热词检测（仅在已连接且音频通道就绪时）。
+     * 启动热词检测（热词识别是本地 SpeechRecognizer，不依赖服务器连接）。
      * SpeechRecognizer 占用麦克风，需确保 AudioRecorder 已停止。
+     *
+     * v2.3.7 回归修复：允许在 DISCONNECTED 状态运行。
+     * 原因：服务端对长时间无上行音频的连接会主动断开（1005 现象），
+     * 修复后为避免重连刷屏会在确认空闲后暂停自动重连（见 WebSocketManager），
+     * 若热词仍被 CONNECTED 门控，断连期间热词将静默失效。
+     * 放开后：热词持续可用，唤醒后经 startListening 的重连流程按需恢复连接。
      */
     private fun startWakeWordDetection() {
-        if (webSocketManager.connectionState.value != WebSocketManager.ConnectionState.CONNECTED) return
+        val wsState = webSocketManager.connectionState.value
+        if (wsState != WebSocketManager.ConnectionState.CONNECTED &&
+            wsState != WebSocketManager.ConnectionState.DISCONNECTED
+        ) return
         if (!audioChannelOpened) return
         if (wakeWordDetector == null) {
             wakeWordDetector = com.xiaozhi.android.audio.WakeWordDetector(

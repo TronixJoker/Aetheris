@@ -1,5 +1,6 @@
 package com.xiaozhi.android.network
 
+import android.os.SystemClock
 import android.util.Log
 import com.xiaozhi.android.model.HelloMessage
 import com.xiaozhi.android.model.ListenMessage
@@ -55,6 +56,18 @@ class WebSocketManager {
     private var deviceId = ""
     private var clientId = ""
 
+    // ==================== 1005 重连循环治理（v2.3.7 回归修复） ====================
+    // 现象：B1 超时取消聆听后设备长时间零上行，服务端主动关闭（close 帧不带状态码 →
+    // okhttp 上报 1005），客户端无条件重连 → 再次空闲被关 → 反复「断开 1005 → 重连」刷屏。
+    // 修复：识别"服务端空闲类关闭"并按 [WsIdleClosePolicy] 优雅降级（最多重试一次后停连）。
+    // 本次连接期间客户端是否有上行活动（任何 sendText/sendAudio）：
+    private var upstreamActivitySinceConnect = false
+    // 本地主动关闭标记：disconnect()/forceReconnect() 主动 close 后，回调里再收到的
+    // onClosing/onClosed 属于本地关闭的回执，不应计入"服务端空闲类关闭"
+    private var localCloseRequested = false
+    // 空闲类关闭连击状态（策略与窗口见 [WsIdleClosePolicy]）
+    private var idleCloseState = WsIdleClosePolicy.INITIAL
+
     enum class ConnectionState {
         DISCONNECTED, CONNECTING, CONNECTED
     }
@@ -72,6 +85,9 @@ class WebSocketManager {
 
         autoReconnect = true
         reconnectAttempts = 0
+        // 用户/业务侧发起新连接 → 空闲关闭连击与本地关闭标记清零
+        idleCloseState = WsIdleClosePolicy.reset()
+        localCloseRequested = false
         _disconnectReason.value = null
         doConnect()
     }
@@ -93,6 +109,9 @@ class WebSocketManager {
                 Log.i(TAG, "WebSocket connected")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
+                // 新连接开始统计"本次连接期间的上行活动"（hello 是握手不算）
+                upstreamActivitySinceConnect = false
+                localCloseRequested = false
 
                 // Send hello message
                 val hello = HelloMessage()
@@ -113,23 +132,58 @@ class WebSocketManager {
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {
                 ws.close(1000, null)
-                handleDisconnect("Connection closing: $code $reason")
+                // 服务端发来的 close 帧（1005 = 未带状态码）→ 服务端主动关闭
+                handleDisconnect("Connection closing: $code $reason", serverInitiated = true)
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                handleDisconnect("Connection closed: $code $reason")
+                handleDisconnect("Connection closed: $code $reason", serverInitiated = true)
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                handleDisconnect("Connection failed: ${t.message}")
+                // 网络层异常（超时/断流等）不属于服务端空闲类关闭，走常规重连
+                handleDisconnect("Connection failed: ${t.message}", serverInitiated = false)
             }
         })
     }
 
-    private fun handleDisconnect(reason: String) {
-        Log.w(TAG, reason)
+    /**
+     * 连接断开统一处理。
+     *
+     * @param reason 断开原因（会透出到 UI 日志）
+     * @param serverInitiated true=服务端主动关闭（onClosing/onClosed）；
+     *                        false=网络异常或本地主动关闭
+     */
+    private fun handleDisconnect(reason: String, serverInitiated: Boolean) {
+        var finalReason = reason
+
+        if (serverInitiated && !localCloseRequested) {
+            if (upstreamActivitySinceConnect) {
+                // 连接期间有过上行活动后仍被服务端关闭 → 视为异常断开，
+                // 连击清零，走常规自动重连（真正的网络/服务端问题）
+                idleCloseState = WsIdleClosePolicy.reset()
+            } else {
+                // 无任何上行活动就被服务端关闭 → 空闲类关闭（1005 重连循环的源头）。
+                // 按 [WsIdleClosePolicy] 优雅降级：窗口内连击达到上限则停止自动重连，
+                // 待用户点按「开始对话」或热词唤醒时经 forceReconnect 按需恢复。
+                idleCloseState = WsIdleClosePolicy.onIdleClose(idleCloseState, SystemClock.elapsedRealtime())
+                if (!WsIdleClosePolicy.shouldAutoReconnect(idleCloseState)) {
+                    autoReconnect = false
+                    // 面向用户的简洁提示（UI 日志按 60 字符截断，提示放在前面）
+                    finalReason = "服务器空闲超时主动断开，已暂停自动重连；点按「开始对话」将自动重连"
+                    Log.w(TAG, "Idle-close streak=${idleCloseState.streak}，停止自动重连。原始原因: $reason")
+                }
+            }
+        } else {
+            // 网络异常 / 本地主动关闭 → 连击清零
+            idleCloseState = WsIdleClosePolicy.reset()
+        }
+        localCloseRequested = false
+        upstreamActivitySinceConnect = false
+
+        Log.w(TAG, finalReason)
         _connectionState.value = ConnectionState.DISCONNECTED
-        _disconnectReason.value = reason
+        _disconnectReason.value = finalReason
         webSocket = null
 
         if (autoReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -150,6 +204,8 @@ class WebSocketManager {
         // 取消挂起中的重连任务，彻底停止后台重连
         reconnectJob?.cancel()
         reconnectJob = null
+        // 标记本地主动关闭：随后的 close 回执不计入服务端空闲类关闭连击
+        localCloseRequested = true
         try {
             webSocket?.close(1000, "User disconnect")
         } catch (_: Exception) {}
@@ -163,6 +219,8 @@ class WebSocketManager {
      */
     fun forceReconnect() {
         // 关闭旧连接（如果还残留）
+        // 标记本地主动关闭：旧连接随后的 close 回执不计入空闲类关闭连击
+        localCloseRequested = true
         try {
             webSocket?.close(1000, "Force reconnect")
         } catch (_: Exception) {}
@@ -173,6 +231,8 @@ class WebSocketManager {
         // 重置状态，启用自动重连
         reconnectAttempts = 0
         autoReconnect = true
+        // 用户/业务侧主动重连 → 空闲关闭连击清零
+        idleCloseState = WsIdleClosePolicy.reset()
         _disconnectReason.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
         Log.i(TAG, "Force reconnect triggered")
@@ -185,10 +245,14 @@ class WebSocketManager {
     }
 
     fun sendAudio(data: ByteArray) {
+        // 上行音频 = 连接活跃证据（服务端空闲超时判定主要看音频流）
+        upstreamActivitySinceConnect = true
         webSocket?.send(ByteString.of(*data))
     }
 
     fun sendText(text: String) {
+        // 上行文本消息（listen/abort/stt 等）同样计入连接活跃证据
+        upstreamActivitySinceConnect = true
         webSocket?.send(text)
     }
 
