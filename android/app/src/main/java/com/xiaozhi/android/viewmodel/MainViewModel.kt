@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +13,8 @@ import com.xiaozhi.android.XiaozhiApp
 import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.audio.AudioPlayer
 import com.xiaozhi.android.audio.AudioRecorder
+import com.xiaozhi.android.audio.BargeInPolicy
+import com.xiaozhi.android.audio.ListenGatePolicy
 import com.xiaozhi.android.audio.MicCaptureMonitor
 import com.xiaozhi.android.audio.MicDiagnosticsFormatter
 import com.xiaozhi.android.audio.MicForegroundPolicy
@@ -98,22 +101,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 是否已自动开启过聆听（每次进入APP只自动开启一次，避免反复打断）
     private var hasAutoStartedListening = false
 
-    // VAD（语音活动检测）自动打断相关参数
-    // 小智说话时监测麦克风，若用户声音能量显著高于背景基线并持续若干帧，自动打断。
-    // 采用"动态基线 + 突变检测"：基线随 TTS 残留/环境噪声自适应更新，
-    // 用户说话时能量会显著突增，从而触发打断。比固定阈值更鲁棒。
-    private val vadTriggerFrames = 8            // 连续突增帧数才触发（约 160ms，媒体外放回声较大需更多确认）
-    private var vadOverThresholdCount = 0
-    // 动态噪声基线（RMS 指数移动平均），初始值较低
-    private var vadNoiseBaseline = 300f
-    // 触发倍数：当前 RMS 超过 基线 × 该倍数 且高于最低绝对阈值，才算突增
-    private val vadRatioThreshold = 3.5f
-    // 最低绝对能量阈值：低于此值视为静音，避免极低底噪下误触发
-    private val vadAbsoluteMin = 500f
-    // 打断后的冷却时间，避免连续打断
-    private var lastInterruptTimeMs = 0L
-    private val vadCooldownMs = 1000L
-    // 调试：每隔若干帧打印一次 RMS，便于排查
+    // ==================== 打断灵敏度治理（v2.3.9）：Barge-in 判定 + 聆听上传门槛 ====================
+    // 旧实现（内联 RMS 判定：绝对阈值 500 + 8 帧约 160ms）过灵敏，环境噪音与
+    // TTS 回声都会触发打断，形成「噪音→识别→应答→误打断」循环。
+    // 治理：判定逻辑下沉为纯 Kotlin 策略类（可单测），VM 只做状态接线——
+    //  - [BargeInPolicy]：能量门槛 500→1000、时长门槛 160ms→480ms（有效人声才允许打断）、
+    //    TTS start 豁免窗 1s→1.5s、触发冷却 2s（防抖）、基线下限 150→300；
+    //  - [ListenGatePolicy]：聆听期间低于门槛的噪音不再上传（收紧识别触发条件），
+    //    带预滚防丢语音起始、带 keepalive 防 1005 空闲断链、带 holdoff 挡回声尾音。
+    // 参数语义与根因详见各类注释。
+    private val bargeInPolicy = BargeInPolicy()
+    private val listenGate = ListenGatePolicy()
+    // 播放器是否正在实际出声（AudioPlayer.isPlayingState 回放最新值）：
+    // 传入 [BargeInPolicy.process] 用于回声余量判定（播放中→更高能量门槛）
+    @Volatile
+    private var ttsPlaybackActive = false
+    // 调试：SPEAKING 期间每隔若干帧打印一次 RMS/基线，便于真机排查
     private var vadDebugCounter = 0
 
     private val _otaStatus = MutableStateFlow<String?>(null)
@@ -261,25 +264,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             audioRecorder.pcmData.collect { pcm ->
                 when (_deviceState.value) {
                     DeviceState.LISTENING -> {
-                        // 本地 VAD：喂给端点检测器（说完话自动停止，仅在 arm 状态消费）
+                        // 本地 VAD：喂给端点检测器（说完话自动停止，仅在 arm 状态消费；
+                        // 端点检测需要完整音频，不受上传门槛影响）
                         speechEndDetector?.feed(pcm)
-                        // 正常聆听：上传音频
+                        // 正常聆听：上传音频前先过 [ListenGatePolicy] 门槛——
+                        // 低于门槛的环境噪音不再上传（收紧"识别触发条件"，
+                        // 噪音不再被服务端当作语音转写），开门瞬间回放预滚不丢语音起始
                         if (audioChannelOpened) {
-                            val encoded = opusCodec.encode(pcm)
-                            if (encoded != null) {
-                                webSocketManager.sendAudio(encoded)
+                            val nowMs = SystemClock.elapsedRealtime()
+                            val rms = BargeInPolicy.rmsOf(pcm)
+                            for (frame in listenGate.process(nowMs, rms, pcm)) {
+                                val encoded = opusCodec.encode(frame)
+                                if (encoded != null) {
+                                    webSocketManager.sendAudio(encoded)
+                                }
                             }
                         }
                     }
                     DeviceState.SPEAKING -> {
-                        // 小智说话时：检测用户声音，自动打断（VAD）
-                        if (detectUserInterruption(pcm)) {
+                        // AI 播报期间：用 [BargeInPolicy] 判定"有效人声"（时长+能量双门槛，
+                        // 播放中叠加回声余量）才允许自动打断，环境噪音与 TTS 回声不再中断输出
+                        val nowMs = SystemClock.elapsedRealtime()
+                        val rms = BargeInPolicy.rmsOf(pcm)
+                        vadDebugCounter++
+                        if (vadDebugCounter >= 75) {
+                            vadDebugCounter = 0
+                            Log.d(TAG, "Barge-in 观测: rms=$rms baseline=${bargeInPolicy.baseline} playing=$ttsPlaybackActive")
+                        }
+                        if (bargeInPolicy.process(nowMs, rms, ttsPlaybackActive)) {
+                            addLog("🔊 检测到有效人声（能量+持续时长达标），自动打断")
                             interruptSpeaking()
                         }
                     }
                     else -> { /* IDLE / CONNECTING 不处理 */ }
                 }
             }
+        }
+
+        // 播放器出声状态：回放最新值，供 [BargeInPolicy] 做回声余量判定
+        viewModelScope.launch {
+            audioPlayer.isPlayingState.collect { ttsPlaybackActive = it }
         }
 
         // 热词唤醒：IDLE 状态持续检测"珩杬"，检测到自动开始聆听
@@ -429,14 +453,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             _deviceState.value = DeviceState.SPEAKING
                             // 重置播放器：清除上一轮打断后可能残留的音频，恢复播放
                             audioPlayer.resetForNewPlayback()
-                            // 设置冷却期：TTS 开始后的 1.5 秒内不检测打断
-                            // 避免 TTS 第一帧冲击被误判为用户说话
-                            lastInterruptTimeMs = System.currentTimeMillis()
-                            // 保持/启动麦克风录音，用于 VAD 自动打断检测
+                            // TTS 开始：开启豁免窗（1.5s，旧实现实际只有 1s）——
+                            // AEC 收敛期 + TTS 开场能量冲击期不判定打断、不吸基线，
+                            // 防止自身回声被误判为用户语音（见 [BargeInPolicy] 类注释）
+                            bargeInPolicy.onTtsStart(SystemClock.elapsedRealtime())
+                            // 保持/启动麦克风录音，用于自动打断检测
                             if (!audioRecorder.isRunning()) {
                                 audioRecorder.start()
                             }
-                            vadOverThresholdCount = 0
                             addLog("AI 正在说话...")
                         }
                         "stop" -> {
@@ -954,6 +978,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // ===== B4 麦克风资格兜底：宠物悬浮窗未启用时拉起 microphone 类型前台服务 =====
         ensureMicForegroundService()
 
+        // 先重置上传门槛再切状态（评审 🟡 换序竞态修复）：若先切 LISTENING 再重置 gate，
+        // 已在队列中的一帧音频（20ms）会以旧门状态被处理——极端情况下旧门仍开着，
+        // 会放行一帧陈旧音频；先重置保证新状态下的第一帧必然走新 holdoff 窗。
+        // 上传门槛重置 + holdoff 窗（600ms）：挡下 TTS 尾音/自动续听瞬间的回声，
+        // 避免回声尾音被服务端转写为"用户语音"（见 [ListenGatePolicy] 类注释）
+        listenGate.onListeningStart(SystemClock.elapsedRealtime())
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
         if (!audioRecorder.start()) {
@@ -1205,6 +1235,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 2. 切回主线程自动结束本轮聆听
      */
     private fun onLocalSpeechEnd(samples: FloatArray, durationMs: Long) {
+        // 评审 🔴 配套观测（everOpened 漏判埋点）：本地 VAD（置信度判定，独立于上传
+        // 门槛）认为用户说了一句话，但本次聆听从未开过上传门 → 整句语音大概率被
+        // 门槛挡下、服务端一个字都没收到（轻声/远场漏判路径，用户"说了话无反应"）。
+        // 输出 B5 风格诊断快照，让该漏判在真机数据中可见（门限是否需要继续调整，
+        // 以这里的观测分布为准）
+        if (!listenGate.everOpened) {
+            Log.w(TAG, "ListenGate 漏判观测: 本地VAD判定说完(${durationMs}ms)但上传门从未打开，本次语音未上传服务端")
+            dumpMicDiagnostics("GATE_NEVER_OPENED")
+        }
+
         // 声纹识别（当前线程执行，约几十毫秒）
         val mgr = speakerRecognition
         if (speakerIdEnabled && mgr != null && mgr.enabled) {
@@ -1294,72 +1334,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         webSocketManager.sendAbort()
         // 2. 立即停止本地音频播放并清空缓冲（关键修复：否则已缓冲的 TTS 会继续播完）
         audioPlayer.stopAndClear()
-        // 3. 切到聆听状态并重启麦克风
+        // 3. 先重置上传门槛再切聆听状态（评审 🟡 换序竞态修复，同 tryStartListeningInternal）：
+        //    上传门槛重置 + holdoff 窗：打断瞬间扬声器仍在出声（回声尾音衰减需数百 ms），
+        //    600ms 内不放行上传，避免回声尾音被服务端转写为"用户语音"而形成
+        //    「打断→识别回声→AI 再应答→再打断」的循环（见 [ListenGatePolicy] 类注释）
+        listenGate.onListeningStart(SystemClock.elapsedRealtime())
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
         if (!audioRecorder.isRunning()) {
             audioRecorder.start()
         }
-        lastInterruptTimeMs = System.currentTimeMillis()
-        vadOverThresholdCount = 0
         addLog("打断说话，重新聆听...")
     }
 
-    /**
-     * VAD：检测用户是否在说话（用于自动打断）。
-     * 采用"动态噪声基线 + 突变倍数 + 最低绝对阈值"三重判定：
-     *  - 基线随环境/TTS 残留自适应更新（指数移动平均）
-     *  - 用户说话时 RMS 会显著高于基线（突增）
-     *  - 同时要求绝对能量高于最低阈值，避免极低底噪误触发
-     * 连续若干帧满足条件才触发，避免短促噪声。
-     * 注意：SPEAKING 期间麦克风需保持开启才能工作。
-     */
-    private fun detectUserInterruption(pcm: ShortArray): Boolean {
-        val now = System.currentTimeMillis()
-        if (now - lastInterruptTimeMs < vadCooldownMs) {
-            vadOverThresholdCount = 0
-            return false
-        }
-
-        // 计算 RMS 能量
-        var sumSq = 0.0
-        for (s in pcm) {
-            val v = s.toDouble()
-            sumSq += v * v
-        }
-        val rms = Math.sqrt(sumSq / pcm.size).toFloat()
-
-        // 调试日志：每 25 帧（约 0.5s）打印一次 RMS 和基线，便于排查
-        vadDebugCounter++
-        if (vadDebugCounter >= 25) {
-            vadDebugCounter = 0
-            Log.d(TAG, "VAD rms=$rms baseline=$vadNoiseBaseline threshold=${vadNoiseBaseline * vadRatioThreshold}")
-        }
-
-        // 判定是否为"突增"：高于最低绝对阈值 且 高于基线倍数
-        val isBurst = rms > vadAbsoluteMin && rms > vadNoiseBaseline * vadRatioThreshold
-
-        if (isBurst) {
-            vadOverThresholdCount++
-            if (vadOverThresholdCount >= vadTriggerFrames) {
-                vadOverThresholdCount = 0
-                addLog("🔊 检测到用户说话，自动打断 (rms=$rms)")
-                return true
-            }
-            // 突增期间不更新基线，避免把用户说话吸收进基线
-        } else {
-            // 能量回落，重置计数
-            vadOverThresholdCount = 0
-            // 平静期更新基线（指数移动平均，alpha=0.1，缓慢跟踪环境噪声）
-            // 仅当 RMS 不特别高时才更新，防止偶发高能量污染基线
-            if (rms < vadNoiseBaseline * vadRatioThreshold) {
-                vadNoiseBaseline = vadNoiseBaseline * 0.9f + rms * 0.1f
-                // 基线下限保护，避免基线过低导致过于敏感
-                if (vadNoiseBaseline < 150f) vadNoiseBaseline = 150f
-            }
-        }
-        return false
-    }
+    // 旧内联 RMS 打断判定（detectUserInterruption）已删除，
+    // 逻辑下沉至 [BargeInPolicy]（纯 Kotlin 策略类，带单测），
+    // 接线点见上方 pcmData 采集分发的 DeviceState.SPEAKING 分支。
 
     fun retryOta() {
         viewModelScope.launch(Dispatchers.IO) {

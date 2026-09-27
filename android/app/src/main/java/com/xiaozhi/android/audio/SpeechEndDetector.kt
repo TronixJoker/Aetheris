@@ -26,13 +26,16 @@ class SpeechEndDetector(private val context: Context) {
     var onSpeechEnd: ((samples: FloatArray, durationMs: Long) -> Unit)? = null
 
     /** 检测灵敏度（0-1，越低越灵敏），启动前设置。
-     *  0.42：远场（桌面宠物场景手机放桌上）+ 环境噪声的平衡值 */
-    var threshold = 0.42f
+     *  v2.3.9 由 0.42 提高到 0.55：0.42 偏低于 silero 默认值（0.5），
+     *  环境噪音（人声类噪声、电视、背景音）易越过置信度门槛被当成语音成段，
+     *  导致「一点动静就被识别」；0.55 在远场灵敏度与抗噪间重新平衡 */
+    var threshold = 0.55f
 
     /** 判定说完话的静音时长（秒），启动前设置。
-     *  1.2s：中文语流中间换气/思考停顿很常见（0.5-1.5s），
-     *  设太短会把"嗯……（思考）我想问……"在"嗯"后就切断 */
-    var silenceDuration = 1.2f
+     *  v2.3.9 由 1.2s 延长到 1.6s（静音判定时间）：太短会把语流中间的
+     *  换气/思考停顿、以及"说话 + 短暂环境音"误判为说完切段，
+     *  加剧端点误触发；1.6s 兼顾中文语流停顿（0.5-1.5s）与响应速度 */
+    var silenceDuration = 1.6f
 
     private var vad: Vad? = null
     private val pendingFrames = ConcurrentLinkedQueue<ShortArray>()
@@ -57,7 +60,9 @@ class SpeechEndDetector(private val context: Context) {
         // arm 后静默期：忽略刚进入聆听时的音频
         // （TTS 尾音回声 / 麦克风启动瞬态 / 唤醒词释放残留，
         //  否则会被 VAD 误判为一段语音，说完即停 → 服务器识别到回声噪声）
-        private const val ARM_BLIND_MS = 400L
+        // v2.3.9：400ms → 600ms，与 ListenGatePolicy.holdoff 对齐，
+        // 覆盖更长的回声尾音衰减窗
+        private const val ARM_BLIND_MS = 600L
         // 触发"说完停止"的最短语音段时长：
         // 短于它的段（"嗯"、"啊"等口头禅开头 + 停顿思考）不触发停止，
         // 否则整句只剩"嗯"被送去识别。桌面端是 0.3s（近场），手机远场需更大。
@@ -74,7 +79,9 @@ class SpeechEndDetector(private val context: Context) {
                 sileroVadModelConfig = SileroVadModelConfig(
                     model = "models/silero_vad.onnx",
                     threshold = threshold,
-                    minSpeechDuration = 0.25f,
+                    // v2.3.9：最短语音时长 0.25s → 0.40s——环境噪音瞬态/短促碰撞
+                    // 很难维持 400ms 以上的高置信度，不成段就不会触发端点回调
+                    minSpeechDuration = 0.40f,
                     minSilenceDuration = silenceDuration,
                 ),
                 sampleRate = SAMPLE_RATE,
