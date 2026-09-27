@@ -32,8 +32,8 @@ android {
         applicationId = "com.xiaozhi.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 117
-        versionName = "2.3.8"
+        versionCode = 118
+        versionName = "2.3.9"
     }
 
     // ABI 拆分瘦身：每个架构单独出包（体积约为通用包的 2/3）
