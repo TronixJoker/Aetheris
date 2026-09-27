@@ -43,8 +43,12 @@ class ListenGatePolicy(
     private val hangoverMs: Long = 800L,
     /** 预滚缓冲时长：开门时回放开门前这么多毫秒的音频 */
     private val preRollMs: Long = 600L,
-    /** 进入聆听后的延迟开门窗口（TTS 尾音/打断回声衰减期） */
+    /** 进入聆听后的延迟开门窗口（TTS 尾音/打断回声衰减期，回声风险场景使用） */
     private val holdoffMs: Long = 600L,
+    /** 快速放行窗（echoRisk=false 的冷启动/唤醒场景）：无近期 TTS 出声时
+     *  回声风险低，holdoff 不必等满 600ms 回声衰减窗——首包提速 400ms，
+     *  语音起始仍由 600ms 预滚兜底不丢失（v2.3.9.1 首包提速） */
+    private val quickStartHoldoffMs: Long = 200L,
     /** 关门期间的 keepalive 帧间隔 */
     private val keepaliveIntervalMs: Long = 5000L,
     /** 单帧时长（AudioRecorder 固定 20ms/帧） */
@@ -73,17 +77,22 @@ class ListenGatePolicy(
     private var lastKeepaliveMs = 0L
 
     /**
-     * 进入聆听状态（LISTENING）时调用：清空历史缓冲、关门并开启 holdoff 窗，
-     * 挡下 TTS 尾音/打断瞬间的回声。
+     * 进入聆听状态（LISTENING）时调用：清空历史缓冲、关门并开启 holdoff 窗。
+     *
+     * @param nowMs 单调时钟毫秒
+     * @param echoRisk 回声风险：true = TTS 出声中/刚结束（打断、自动续听），
+     *                 使用完整 [holdoffMs] 回声衰减窗；false = 冷启动/唤醒/手动
+     *                 开启且近期（约 3s 内）无 TTS 出声，使用 [quickStartHoldoffMs]
+     *                 快速放行窗——首包不等满回声窗（预滚保语音起始不丢）
      */
-    fun onListeningStart(nowMs: Long) {
+    fun onListeningStart(nowMs: Long, echoRisk: Boolean = true) {
         isOpen = false
         everOpened = false
         loudStreak = 0
         quietGapFrames = 0
         lastLoudMs = 0L
         lastKeepaliveMs = nowMs
-        holdoffUntilMs = nowMs + holdoffMs
+        holdoffUntilMs = nowMs + if (echoRisk) holdoffMs else quickStartHoldoffMs
         preRoll.clear()
     }
 

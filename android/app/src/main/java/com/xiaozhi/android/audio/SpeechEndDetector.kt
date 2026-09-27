@@ -25,17 +25,46 @@ class SpeechEndDetector(private val context: Context) {
     @Volatile
     var onSpeechEnd: ((samples: FloatArray, durationMs: Long) -> Unit)? = null
 
+    /**
+     * 帧级「开始说话」回调（VAD 工作线程）：VAD 实时语音状态发生 静音→说话 跳变时触发。
+     *
+     * v2.3.9.1 端点自适应配套：切段后的弹性宽限期（300-400ms）内用户继续说（句中停顿）
+     * 时，靠本信号以帧级延迟（~32ms/窗）感知续说、撤销在途收尾，句中停顿不再切断。
+     * 注意：段级回调 [onSpeechEnd] 要求新段成段（≥0.4s 语音 + 1.2s 静音），宽限窗内
+     * 必然赶不上，因此「宽限内续说」的感知必须走本帧级信号。
+     * 噪音口径与成段判定同源：同一 silero VAD、同一 [threshold] 置信度门槛，
+     * 本信号的灵敏度与 v2.3.9 的成段判定一致，不额外放宽噪音容忍度。
+     */
+    @Volatile
+    var onSpeechStart: (() -> Unit)? = null
+
+    /**
+     * 距最后一次检出人声的毫秒数（v2.3.9.1 评审 🔴-1 尾扫兜底配套）。
+     * 工作线程在每个 VAD 窗口（~32ms）更新 [lastVoiceActiveAtMs]（inSpeech=true 时刷新），
+     * 本方法供主线程的「尾扫兜底计时」到期时核查：距最后说话不足
+     * [EndpointGraceCoordinator.TAIL_SCAN_VOICE_QUIET_MS]（1s）= 还在说话/刚开口，
+     * 不得收尾（连续说话场景恒顺延，直到真正静音）。
+     * 从未检出过人声时返回 [Long.MAX_VALUE]（此时收尾无信息量损失）。
+     */
+    fun msSinceLastVoiceMs(): Long {
+        val at = lastVoiceActiveAtMs
+        return if (at <= 0L) Long.MAX_VALUE else System.currentTimeMillis() - at
+    }
+
     /** 检测灵敏度（0-1，越低越灵敏），启动前设置。
      *  v2.3.9 由 0.42 提高到 0.55：0.42 偏低于 silero 默认值（0.5），
      *  环境噪音（人声类噪声、电视、背景音）易越过置信度门槛被当成语音成段，
      *  导致「一点动静就被识别」；0.55 在远场灵敏度与抗噪间重新平衡 */
     var threshold = 0.55f
 
-    /** 判定说完话的静音时长（秒），启动前设置。
-     *  v2.3.9 由 1.2s 延长到 1.6s（静音判定时间）：太短会把语流中间的
-     *  换气/思考停顿、以及"说话 + 短暂环境音"误判为说完切段，
-     *  加剧端点误触发；1.6s 兼顾中文语流停顿（0.5-1.5s）与响应速度 */
-    var silenceDuration = 1.6f
+    /** 判定切段前的静音时长（秒），启动前设置。
+     *  v2.3.9：1.2s → 1.6s（固定收紧）——治理了句中停顿误切，但让所有用户
+     *  「说完→出结果」无条件变慢 0.4s（v2.3.9 用户反馈回归）。
+     *  v2.3.9.1：回调到 1.2s，仅保留"切段"职责；1.2s 处的句中停顿改由
+     *  [EndpointGracePolicy] 的弹性宽限兜住（切段后宽限期内续说不停机，
+     *  宽限自适应 300-400ms），端点总时长 1.5s~1.6s 且按用户停顿习惯自适应，
+     *  治理效果不回退、尾延迟较 v2.3.9 压缩 0.25s（收敛后） */
+    var silenceDuration = 1.2f
 
     private var vad: Vad? = null
     private val pendingFrames = ConcurrentLinkedQueue<ShortArray>()
@@ -51,6 +80,22 @@ class SpeechEndDetector(private val context: Context) {
     /** arm 时间戳（毫秒），用于 arm 后静默期 */
     @Volatile
     private var armTimeMs = 0L
+
+    /**
+     * VAD 上一轮的实时语音状态（工作线程私有）：用于检测 静音→说话 跳变，
+     * 驱动帧级 [onSpeechStart] 回调。arm 时复位为 false（新会话从静音起步）。
+     */
+    @Volatile
+    private var wasInSpeech = false
+
+    /**
+     * 最后一次检出人声的时刻（毫秒时间戳，v2.3.9.1 评审 🔴-1 尾扫兜底配套）：
+     * 工作线程在 inSpeech=true 的每个窗口刷新（~32ms 粒度）；@Volatile 保证
+     * 工作线程写 / 主线程读（尾扫到期核查 [msSinceLastVoiceMs]）的可见性与
+     * arm32 上的 64 位原子性。0 = 本进程从未检出人声。
+     */
+    @Volatile
+    private var lastVoiceActiveAtMs = 0L
 
     companion object {
         private const val TAG = "SpeechEndDetector"
@@ -121,6 +166,8 @@ class SpeechEndDetector(private val context: Context) {
     fun arm() {
         if (!running) return
         reset()
+        // 帧级语音状态复位：新会话从静音起步，第一声人声才构成一次 跳变
+        wasInSpeech = false
         armTimeMs = System.currentTimeMillis()
         active = true
     }
@@ -173,6 +220,27 @@ class SpeechEndDetector(private val context: Context) {
                         return
                     }
                 }
+            }
+
+            // 帧级「开始说话」跳变检测（v2.3.9.1 端点自适应配套）：
+            // isSpeechDetected 反映 silero 内部实时语音状态（与成段判定同源、同阈值），
+            // 静音→说话 跳变以 ~32ms/窗 的粒度触发 [onSpeechStart]——
+            // 弹性宽限期内用户续说靠它在 300-400ms 内被感知（段级回调赶不上宽限窗）
+            val inSpeech = try {
+                localVad.isSpeechDetected()
+            } catch (e: Exception) {
+                Log.w(TAG, "VAD 状态读取异常: ${e.message}")
+                wasInSpeech // 异常时维持原状态，避免误发跳变
+            }
+            if (inSpeech && !wasInSpeech) {
+                onSpeechStart?.invoke()
+            }
+            wasInSpeech = inSpeech
+            // 尾扫兜底配套（评审 🔴-1）：说话中的每个窗口刷新「最后说话时刻」，
+            // 供宽限撤销后的尾扫计时到期核查「距今是否已静音超 1s」——
+            // 连续说话时该时间戳持续前移，尾扫恒顺延，直到真正静音才允许收尾
+            if (inSpeech) {
+                lastVoiceActiveAtMs = System.currentTimeMillis()
             }
 
             // 取出已完成的语音段

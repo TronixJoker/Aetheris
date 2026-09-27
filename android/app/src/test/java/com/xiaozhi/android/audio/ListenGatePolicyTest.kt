@@ -349,4 +349,57 @@ class ListenGatePolicyTest {
         p.onListeningStart(t)
         assertFalse("onListeningStart 应复位 everOpened", p.everOpened)
     }
+
+    // ---------- v2.3.9.1 回声风险分级 holdoff：快速放行窗（首包提速） ----------
+
+    @Test
+    fun `echoRisk为false - holdoff降为200ms快速放行 - 真人说话提前开门`() {
+        val p = newPolicy()
+        // 冷启动/唤醒场景：近期无 TTS 出声 → echoRisk=false
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        var flushed = emptyList<ShortArray>()
+        // 快速放行窗 200ms 内不放行，持续说话的 streak 先行累计
+        while (t < 200L) {
+            flushed = feed(p, t, OPEN_RMS)
+            assertEquals("200ms 快速放行窗内不放行", 0, flushed.size)
+            t += FRAME_MS
+        }
+        // t=200 恰好快速窗结束：立即开门并回放预滚（语音起始由预滚兜底不丢失）。
+        // 预滚只积累本次聆听开始以来的帧：快速窗 200ms（10 帧）+ 当前帧 = 11 帧，
+        // （对比 echoRisk=true 的 600ms holdoff 场景恰好攒满 30 帧）
+        flushed = feed(p, t, OPEN_RMS)
+        assertTrue("快速放行窗结束时持续说话应立即开门", p.isOpen)
+        assertEquals("回放 200ms 预滚 + 当前帧", 11, flushed.size)
+        assertEquals("回放从本会话第 1 帧起：起始无丢失", 1, markerOf(flushed.first()))
+    }
+
+    @Test
+    fun `echoRisk默认true - 保持完整600ms回声衰减窗不回退`() {
+        val p = newPolicy()
+        p.onListeningStart(0L) // 默认参数 = 回声风险场景（打断/自动续听）
+        var t = 0L
+        while (t < 600L) {
+            val flushed = feed(p, t, OPEN_RMS)
+            assertEquals("echoRisk=true（默认）600ms 内不放行，治理效果不回退", 0, flushed.size)
+            t += FRAME_MS
+        }
+        val flushed = feed(p, t, OPEN_RMS)
+        assertTrue("600ms 回声窗结束时开门", p.isOpen)
+        assertEquals(30, flushed.size)
+    }
+
+    @Test
+    fun `echoRisk为false且快速窗内静音 - 不开门也不误放预滚`() {
+        val p = newPolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(20) { feed(p, t, NOISE_RMS); t += FRAME_MS } // 400ms 底噪
+        assertFalse("快速窗内底噪不应开门", p.isOpen)
+        // 越过快速窗后 2 帧瞬态 + 回落 + 2 帧：streak 不满 5 仍不开门（治理逻辑不变）
+        repeat(2) { feed(p, t, OPEN_RMS); t += FRAME_MS }
+        feed(p, t, NOISE_RMS); t += FRAME_MS
+        repeat(2) { feed(p, t, OPEN_RMS); t += FRAME_MS }
+        assertFalse("streak 不满 5 不开门", p.isOpen)
+    }
 }

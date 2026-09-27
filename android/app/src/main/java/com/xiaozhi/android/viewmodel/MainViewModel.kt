@@ -14,6 +14,7 @@ import com.xiaozhi.android.activation.ActivationService
 import com.xiaozhi.android.audio.AudioPlayer
 import com.xiaozhi.android.audio.AudioRecorder
 import com.xiaozhi.android.audio.BargeInPolicy
+import com.xiaozhi.android.audio.EndpointGraceCoordinator
 import com.xiaozhi.android.audio.ListenGatePolicy
 import com.xiaozhi.android.audio.MicCaptureMonitor
 import com.xiaozhi.android.audio.MicDiagnosticsFormatter
@@ -29,6 +30,7 @@ import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.pet.FloatingPetService
 import com.xiaozhi.android.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -42,6 +44,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // v2.3.7 回归修复后 B1 降级为「提示不拦截」——超时仅提示，不再取消本次聆听，
         // 麦克风真伪由 B2 首帧实证判定）
         private const val MIC_FREE_WAIT_TIMEOUT_MS = 2000L
+
+        // v2.3.9.1 端点自适应/首包提速参数：
+        // TTS 出声结束后的回声衰减观察窗——窗内开始聆听视为有回声风险（完整 holdoff）；
+        // 超过该窗才开始的聆听（唤醒/手动）视为无回声风险（快速放行窗 200ms）
+        private const val TTS_ECHO_DECAY_MS = 3000L
+        // 端点收尾后多久内又开始聆听视为「秒续说」（上句大概率被切早，上调宽限）
+        private const val RESUME_AFTER_FINALIZE_MS = 2500L
 
         // B1 配套：热词检测器停止后给系统 SpeechRecognizer 的麦克风归还窗口。
         // 识别器 stopListening/destroy 后系统异步归还音频输入，短暂等待可显著降低
@@ -118,6 +127,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var ttsPlaybackActive = false
     // 调试：SPEAKING 期间每隔若干帧打印一次 RMS/基线，便于真机排查
     private var vadDebugCounter = 0
+
+    // ==================== 端点自适应收尾（v2.3.9.1「说完→出结果」提速） ====================
+    // 根因：v2.3.9 把本地 VAD 静音判定固定收紧到 1.6s，所有用户说完后都要等满
+    // 1.6s 才 stopListening 通知服务端出结果。优化：静音判定回调 1.2s（切段）+
+    // [EndpointGracePolicy] 弹性宽限（300-400ms 自适应）负责"真的说完了"的收尾——
+    // 宽限期内续说不停机（句中停顿不切断），宽限满才通知服务端，治理效果不回退。
+    // 帧级续说撤销收尾后必须补挂「尾扫兜底计时」（评审 🔴-1，见 scheduleEndpointTailScan），
+    // 保证短促噪音不成段时也能兜底收尾，聆听态永不永久挂起。
+    // VM 只做状态接线；世代/在途判定下沉 [EndpointGraceCoordinator]（纯逻辑可单测），
+    // 伸缩规则见 [EndpointGracePolicy] 类注释。
+    private val endpointGrace = com.xiaozhi.android.audio.EndpointGracePolicy()
+    /** 端点收尾状态机：世代核对 + 在途收尾判定 + 宽限伸缩联动（VAD 线程/主线程混用，内部原子化） */
+    private val endpointCoordinator = com.xiaozhi.android.audio.EndpointGraceCoordinator(endpointGrace)
+    /** 在途的收尾任务句柄：用户手动停止/新会话启动时撤销，防止误杀新聆听会话 */
+    @Volatile
+    private var pendingEndpointJob: Job? = null
+    /** 最近一次端点干净收尾时刻（elapsedRealtime）：供「收尾后秒续说→上调宽限」判定 */
+    @Volatile
+    private var lastEndpointFinalizeElapsed = 0L
+    /** 最近一次 TTS 实际出声结束时刻：供聆听会话启动时的回声风险分级判定 */
+    @Volatile
+    private var lastTtsPlaybackEndElapsed = 0L
 
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
@@ -301,9 +332,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 播放器出声状态：回放最新值，供 [BargeInPolicy] 做回声余量判定
+        // 播放器出声状态：回放最新值，供 [BargeInPolicy] 做回声余量判定；
+        // 出声→静音的下降沿记录 [lastTtsPlaybackEndElapsed]，
+        // 供聆听会话启动时的 holdoff 回声风险分级（v2.3.9.1 首包提速）
         viewModelScope.launch {
-            audioPlayer.isPlayingState.collect { ttsPlaybackActive = it }
+            audioPlayer.isPlayingState.collect { playing ->
+                if (!playing && ttsPlaybackActive) {
+                    lastTtsPlaybackEndElapsed = SystemClock.elapsedRealtime()
+                }
+                ttsPlaybackActive = playing
+            }
         }
 
         // 热词唤醒：IDLE 状态持续检测"珩杬"，检测到自动开始聆听
@@ -981,9 +1019,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 先重置上传门槛再切状态（评审 🟡 换序竞态修复）：若先切 LISTENING 再重置 gate，
         // 已在队列中的一帧音频（20ms）会以旧门状态被处理——极端情况下旧门仍开着，
         // 会放行一帧陈旧音频；先重置保证新状态下的第一帧必然走新 holdoff 窗。
-        // 上传门槛重置 + holdoff 窗（600ms）：挡下 TTS 尾音/自动续听瞬间的回声，
-        // 避免回声尾音被服务端转写为"用户语音"（见 [ListenGatePolicy] 类注释）
-        listenGate.onListeningStart(SystemClock.elapsedRealtime())
+        // holdoff 回声风险分级（v2.3.9.1 首包提速）：TTS 出声中/刚结束（3s 衰减窗内）
+        // → 完整 600ms 回声衰减窗（治理效果不变）；冷启动/唤醒等无近期 TTS 场景
+        // → 200ms 快速放行窗，首包提前 400ms（语音起始仍由预滚兜底不丢失）
+        val gateStartMs = SystemClock.elapsedRealtime()
+        val echoRisk = ttsPlaybackActive ||
+            (gateStartMs - lastTtsPlaybackEndElapsed < TTS_ECHO_DECAY_MS)
+        listenGate.onListeningStart(gateStartMs, echoRisk)
+        // 秒续说上调宽限（v2.3.9.1 端点自适应）：上一轮收尾后 2.5s 内又开始说话，
+        // 大概率上句在宽限外被切早了（意犹未尽）→ 抬宽本轮收尾宽限（自适应上浮）
+        if (lastEndpointFinalizeElapsed > 0 &&
+            gateStartMs - lastEndpointFinalizeElapsed < RESUME_AFTER_FINALIZE_MS
+        ) {
+            endpointGrace.onResumeWithinGrace()
+        }
+        // 撤销上一会话遗留的在途收尾任务：防止旧任务在新会话中误触发 stopListening
+        // （任务内有世代号+状态双保险，此处显式取消是最直接的防线）
+        pendingEndpointJob?.cancel()
+        endpointCoordinator.reset()
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
         if (!audioRecorder.start()) {
@@ -1142,6 +1195,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopListening() {
+        // 撤销在途的自适应端点收尾任务（v2.3.9.1）：用户手动停止/状态切换时，
+        // 不能让宽限计时任务稍后误发 stop。若本方法由收尾任务自身调用，
+        // 自取消无副作用——协程取消是协作式的，方法内无挂起点，剩余语句照常执行
+        pendingEndpointJob?.cancel()
+        endpointCoordinator.reset()
         micHealthJob?.cancel()
         _deviceState.value = DeviceState.IDLE
         webSocketManager.sendListenStop()
@@ -1174,6 +1232,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val detector = com.xiaozhi.android.audio.SpeechEndDetector(getApplication())
                     detector.onSpeechEnd = { samples, durationMs ->
                         onLocalSpeechEnd(samples, durationMs)
+                    }
+                    // 帧级续说信号（v2.3.9.1）：弹性宽限期内 VAD 重新检出人声 →
+                    // 撤销在途收尾，句中停顿不切断（详见 [onLocalSpeechResumed]）
+                    detector.onSpeechStart = {
+                        onLocalSpeechResumed()
                     }
                     if (detector.start()) {
                         speechEndDetector = detector
@@ -1230,9 +1293,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 本地 VAD 检测到用户说完一句话（VAD 工作线程回调）。
+     * 本地 VAD 检测到一段语音结束（VAD 工作线程回调）。
      * 1. 用该语音段做声纹识别
-     * 2. 切回主线程自动结束本轮聆听
+     * 2. 过 [EndpointGracePolicy] 弹性宽限后自动结束本轮聆听（v2.3.9.1 端点自适应）
+     *
+     * v2.3.9.1 语义变化：本地 VAD 在静音 1.2s 时切段（v2.3.9 固定 1.6s）——切段
+     * ≠ 说完了：切段后先启动一道弹性宽限计时（300-400ms 自适应），宽限内用户
+     * 继续说 → 撤销收尾、同一轮聆听继续（句中停顿不切断语义）；宽限期满无续说
+     * → 才 stopListening 通知服务端出结果。
+     * 「宽限内续说」的感知走两条线：
+     *  - 帧级主路径：[SpeechEndDetector.onSpeechStart] → [onLocalSpeechResumed]，
+     *    ~32ms 粒度在宽限窗内撤销收尾（撤销后【必须】补挂尾扫兜底计时，见
+     *    [scheduleEndpointTailScan]，否则短促噪音撤销收尾后聆听态会永久挂起）；
+     *  - 世代核对兜底：收尾任务到期时 [EndpointGraceCoordinator.onFinalizeDue]
+     *    发现世代已前进（宽限内又切出新段）则作废本次收尾。
+     * 端点总时长 = 1.2s + grace：首轮 1.6s（与 v2.3.9 持平，升级首日不劣化），
+     * 干净收尾逐轮收敛至 1.5s（评审 🔴-2 下限 300ms），误切/秒续说自动上浮回 1.6s 封顶。
      */
     private fun onLocalSpeechEnd(samples: FloatArray, durationMs: Long) {
         // 评审 🔴 配套观测（everOpened 漏判埋点）：本地 VAD（置信度判定，独立于上传
@@ -1256,10 +1332,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (!vadAutoStopEnabled) return
-        viewModelScope.launch(Dispatchers.Main) {
-            if (_deviceState.value == DeviceState.LISTENING) {
-                stopListening()
-                addLog("🛑 检测到你说完了（${durationMs / 1000.0}s），等待识别结果...")
+
+        // ===== 自适应端点收尾（v2.3.9.1） =====
+        // 本方法在 VAD 工作线程调用；世代/在途判定下沉 [EndpointGraceCoordinator]
+        // （原子状态机，跨线程安全），计时任务在主线程执行。
+        // 时序示例（grace=400ms，句中停顿 1.3s 场景）：
+        //   seg1 切段（gen=1，pending=true，job1 定时 400ms）
+        //   └ +100ms 用户续说：VAD 帧级检出人声 → [onLocalSpeechResumed] 撤销 job1、
+        //     宽限上调（停顿型用户自适应）→ 同一轮聆听继续，silero 积累新段
+        //   └ 新段说完 +1.2s 静音 → seg2 切段（gen=2，pending=true，job2 定时宽限）
+        //   └ job2 到期：世代核对通过且状态仍 LISTENING → 干净收尾：
+        //     宽限下调（收敛）、stopListening 通知服务端出结果
+        val plan = endpointCoordinator.onSegmentArrive()
+        pendingEndpointJob = viewModelScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(plan.graceMs)
+            // 先核对聆听状态：会话已结束（手动停止/断连）则不动协调器状态
+            if (_deviceState.value != DeviceState.LISTENING) return@launch
+            // 世代核对：宽限期间用户又说话（新段已自增世代）→ 不是说完，继续聆听
+            if (!endpointCoordinator.onFinalizeDue(plan.generation)) return@launch
+            // 干净收尾：确实说完了。记录收尾时刻（秒续说观测用），stopListening 通知服务端
+            lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
+            stopListening()
+            addLog("🛑 检测到你说完了（${durationMs / 1000.0}s），等待识别结果...")
+        }
+    }
+
+    /**
+     * 帧级续说信号（VAD 工作线程回调，[SpeechEndDetector.onSpeechStart] 接线）：
+     * 宽限期内 VAD 重新检出人声 = 上一段切在句中停顿里、用户还在继续说。
+     * 撤销在途收尾任务、同一轮聆听继续；协调器同时上调宽限（停顿型用户自适应，
+     * 端点永不慢于 v2.3.9 的 1.6s 封顶）。无在途收尾时（会话内首次开口）为空操作。
+     *
+     * v2.3.9.1 评审 🔴-1：撤销成功后【必须】补挂尾扫兜底计时——
+     * 若该次续说是 <0.4s 的短促人声型噪音（不成段 → 世代不前进），撤销后
+     * 在途收尾队列即被清空，之后用户不再说话时无人收尾，聆听态将永久挂起、
+     * 识别结果永不返回。尾扫兜底见 [scheduleEndpointTailScan]。
+     */
+    private fun onLocalSpeechResumed() {
+        val claimedGeneration = endpointCoordinator.onSpeechResumedWithinGrace()
+        if (claimedGeneration >= 0) {
+            pendingEndpointJob?.cancel()
+            Log.d(TAG, "端点宽限内检出续说（句中停顿兜住），收尾撤销，grace=${endpointGrace.graceMs}ms")
+            // 🔴-1 防线：撤销的同时补挂「尾扫兜底计时」，恢复「说完必然收尾」闭环
+            scheduleEndpointTailScan(claimedGeneration)
+        }
+    }
+
+    /**
+     * 尾扫兜底计时（v2.3.9.1 评审 🔴-1 防线，主线程）。
+     *
+     * 挂载时机：帧级续说撤销在途收尾后（[onLocalSpeechResumed]）。
+     * 消除的挂起路径：宽限内出现短促人声型噪音（"嗯"、咳嗽等 <0.4s 不成段）
+     * → 帧级续说撤销了正常收尾 → 若用户此后不再说话，世代不再前进、收尾队列
+     * 已空 → 聆听态永久挂起（keepalive 维持连接，连 1005 空闲断链都不触发）。
+     *
+     * 防线设计（世代键控 + 到期先查最后说话时刻，双层过滤）：
+     *  1. 延迟 = VAD 静音线 1.2s + 当前宽限：若宽限内续说是真语音（≥0.4s），
+     *     新段会在「其结束后 1.2s」成段并接管正常收尾 → 尾扫到期世代核对失败，
+     *     自动作废（不与正常路径抢跑）；
+     *  2. 到期时核查 [SpeechEndDetector.msSinceLastVoiceMs]（检测器帧级维护，
+     *     说话中持续刷新）：距最后说话不足 1s = 还在说话/刚开口 → 顺延重挂，
+     *     连续说话一路顺延直到真正静音（不伤连续语流）；
+     *  3. 世代未变 + 已静音超 1s → 兜底收尾（与干净收尾同规则下调宽限）。
+     * 任何收尾都会被 [stopListening]/[reset]/打断路径的 cancel+reset 双保险清理。
+     */
+    private fun scheduleEndpointTailScan(claimedGeneration: Long) {
+        pendingEndpointJob = viewModelScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(endpointCoordinator.tailScanDelayMs())
+            // 先核对聆听状态：会话已结束（手动停止/断连）则不碰协调器状态
+            if (_deviceState.value != DeviceState.LISTENING) return@launch
+            val voiceAgeMs = speechEndDetector?.msSinceLastVoiceMs() ?: Long.MAX_VALUE
+            when (endpointCoordinator.onTailScanDue(claimedGeneration, voiceAgeMs)) {
+                EndpointGraceCoordinator.TailScanDecision.FINALIZE -> {
+                    // 兜底收尾：确实说完了。与正常收尾同规则记录时刻并通知服务端
+                    lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
+                    Log.d(TAG, "尾扫兜底收尾：gen=$claimedGeneration 距最后说话 ${voiceAgeMs}ms")
+                    stopListening()
+                    addLog("🛑 检测到你说完了，等待识别结果...")
+                }
+                EndpointGraceCoordinator.TailScanDecision.POSTPONE ->
+                    // 还在说话/刚开口：顺延重挂（同一世代键控，静音后再收）
+                    scheduleEndpointTailScan(claimedGeneration)
+                EndpointGraceCoordinator.TailScanDecision.VOID ->
+                    // 宽限内续说真的又成段（正常收尾已接管）或会话已重置：作废
+                    Unit
             }
         }
     }
@@ -1334,11 +1490,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         webSocketManager.sendAbort()
         // 2. 立即停止本地音频播放并清空缓冲（关键修复：否则已缓冲的 TTS 会继续播完）
         audioPlayer.stopAndClear()
+        // 2.5 撤销可能遗留的端点收尾任务（防御）：正常时序下 SPEAKING 态不会有在途
+        //     收尾（收尾仅在 LISTENING 态调度，且到期有状态核对），但断连等异常路径
+        //     可能让旧任务存活到本方法之后——进入新聆听会话前显式清掉最稳妥
+        pendingEndpointJob?.cancel()
+        endpointCoordinator.reset()
         // 3. 先重置上传门槛再切聆听状态（评审 🟡 换序竞态修复，同 tryStartListeningInternal）：
         //    上传门槛重置 + holdoff 窗：打断瞬间扬声器仍在出声（回声尾音衰减需数百 ms），
         //    600ms 内不放行上传，避免回声尾音被服务端转写为"用户语音"而形成
-        //    「打断→识别回声→AI 再应答→再打断」的循环（见 [ListenGatePolicy] 类注释）
-        listenGate.onListeningStart(SystemClock.elapsedRealtime())
+        //    「打断→识别回声→AI 再应答→再打断」的循环（见 [ListenGatePolicy] 类注释）。
+        //    打断路径 TTS 必然正在出声 → 显式 echoRisk=true，走完整 600ms 回声衰减窗
+        //    （v2.3.9.1 的快速放行窗只用于无近期 TTS 的冷启动/唤醒场景，此处不适用）
+        listenGate.onListeningStart(SystemClock.elapsedRealtime(), echoRisk = true)
         _deviceState.value = DeviceState.LISTENING
         webSocketManager.sendListenStart("auto")
         if (!audioRecorder.isRunning()) {
