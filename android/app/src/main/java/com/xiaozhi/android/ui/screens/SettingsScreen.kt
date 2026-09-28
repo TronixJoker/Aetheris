@@ -1,6 +1,5 @@
 package com.xiaozhi.android.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -43,13 +42,9 @@ fun SettingsScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<UpdateManager.UpdateResult?>(null) }
 
-    // 语音设置（本地 VAD + 声纹识别）
+    // 语音设置（本地 VAD）
+    // （声纹人物识别相关设置项已随该功能彻底移除，不留开关）
     var vadEnabled by remember { mutableStateOf(true) }
-    var speakerEnabled by remember { mutableStateOf(true) }
-    var speakerThreshold by remember { mutableStateOf(0.55f) }
-    var speakerOwnerName by remember { mutableStateOf("主人") }
-    var showResetSpeakerDialog by remember { mutableStateOf(false) }
-    val speakerStatus by viewModel.speakerStatus.collectAsStateWithLifecycle()
 
     val updateManager = remember { UpdateManager(context) }
     val updateState by updateManager.updateState.collectAsStateWithLifecycle()
@@ -76,9 +71,6 @@ fun SettingsScreen(
         clientId = configManager.getClientId()
         activationVersion = configManager.getActivationVersion()
         vadEnabled = configManager.isVadEnabled()
-        speakerEnabled = configManager.isSpeakerIdEnabled()
-        speakerThreshold = configManager.getSpeakerThreshold()
-        speakerOwnerName = configManager.getSpeakerOwnerName()
     }
 
     /** 语音设置改动即保存并热应用 */
@@ -86,9 +78,6 @@ fun SettingsScreen(
         scope.launch {
             val configManager = ConfigManager(viewModel.getApplication())
             configManager.setVadEnabled(vadEnabled)
-            configManager.setSpeakerIdEnabled(speakerEnabled)
-            configManager.setSpeakerThreshold(speakerThreshold)
-            configManager.setSpeakerOwnerName(speakerOwnerName)
             viewModel.applySpeechSettings()
         }
     }
@@ -322,30 +311,6 @@ fun SettingsScreen(
         )
     }
 
-    // 声纹重置确认对话框
-    if (showResetSpeakerDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetSpeakerDialog = false },
-            title = { Text("重置声纹档案？", fontWeight = FontWeight.Bold) },
-            text = {
-                Text("将删除已注册的声纹数据，下次对话时会重新采集并注册。此操作不可撤销。")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showResetSpeakerDialog = false
-                    viewModel.resetSpeakerProfiles()
-                }) {
-                    Text("重置", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetSpeakerDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -410,13 +375,14 @@ fun SettingsScreen(
                 }
             }
 
-            // ==================== 语音识别设置（本地 VAD + 声纹） ====================
+            // ==================== 语音识别设置（本地 VAD） ====================
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("语音识别", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "本地运行，不上传任何音频。说完话自动停止识别；识别当前说话人身份。",
+                        // （原"识别当前说话人身份"描述已随人物识别功能移除）
+                        "本地运行，不上传任何音频。说完话自动停止识别。",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -443,96 +409,6 @@ fun SettingsScreen(
                                 saveSpeechSettings()
                             }
                         )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // 声纹识别开关
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("声纹人物识别", fontSize = 14.sp)
-                            Text(
-                                "自动识别说话的是否为注册用户",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = speakerEnabled,
-                            onCheckedChange = {
-                                speakerEnabled = it
-                                saveSpeechSettings()
-                            }
-                        )
-                    }
-
-                    // 声纹详细设置（开启时显示）
-                    AnimatedVisibility(visible = speakerEnabled) {
-                        Column {
-                            Spacer(Modifier.height(12.dp))
-                            HorizontalDivider()
-                            Spacer(Modifier.height(12.dp))
-
-                            // 主人称呼
-                            OutlinedTextField(
-                                value = speakerOwnerName,
-                                onValueChange = { speakerOwnerName = it.take(12) },
-                                label = { Text("主人称呼") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                trailingIcon = {
-                                    if (speakerOwnerName != "主人") {
-                                        TextButton(onClick = {
-                                            speakerOwnerName = "主人"
-                                            saveSpeechSettings()
-                                        }) { Text("恢复") }
-                                    }
-                                }
-                            )
-                            Spacer(Modifier.height(8.dp))
-
-                            // 识别阈值
-                            Text("识别阈值：${"%.2f".format(speakerThreshold)}", fontSize = 14.sp)
-                            Text(
-                                "越高越严格（同一人通常 >0.7，不同人 <0.4）",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Slider(
-                                value = speakerThreshold,
-                                onValueChange = { speakerThreshold = it },
-                                onValueChangeFinished = { saveSpeechSettings() },
-                                valueRange = 0.3f..0.9f
-                            )
-                            Spacer(Modifier.height(8.dp))
-
-                            // 注册状态 + 重置按钮
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    speakerStatus,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                OutlinedButton(
-                                    onClick = { showResetSpeakerDialog = true },
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.error
-                                    )
-                                ) {
-                                    Text("重置声纹")
-                                }
-                            }
-                        }
                     }
                 }
             }

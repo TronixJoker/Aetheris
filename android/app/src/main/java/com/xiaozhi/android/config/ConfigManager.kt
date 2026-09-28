@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -123,11 +122,9 @@ class ConfigManager(private val context: Context) {
         private val KEY_SERIAL_NUMBER = stringPreferencesKey("serial_number")
         private val KEY_CUSTOM_APIS = stringPreferencesKey("custom_apis")
 
-        // 语音端点检测（VAD）与声纹识别
+        // 语音端点检测（VAD）
+        // （声纹/人物识别配置项 KEY_SPEAKER_* 已随功能彻底移除，不留开关）
         private val KEY_VAD_ENABLED = booleanPreferencesKey("vad_enabled")
-        private val KEY_SPEAKER_ENABLED = booleanPreferencesKey("speaker_enabled")
-        private val KEY_SPEAKER_THRESHOLD = floatPreferencesKey("speaker_threshold")
-        private val KEY_SPEAKER_OWNER_NAME = stringPreferencesKey("speaker_owner_name")
 
         // 自定义 API 列表的 JSON 序列化器与缓存
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -341,7 +338,11 @@ class ConfigManager(private val context: Context) {
         }
     }
 
-    // ==================== VAD / 声纹识别配置 ====================
+    // ==================== VAD 配置 ====================
+    // （声纹人物识别配置 isSpeakerIdEnabled / getSpeakerThreshold /
+    //   getSpeakerOwnerName 等已随功能彻底移除，不留开关；
+    //   老用户 DataStore 中残留的 speaker_* 键无任何代码路径消费，
+    //   属无害存量数据，不做主动擦除，避免为清理而新增常驻逻辑）
 
     /** 客户端 VAD（说完话自动停止识别）是否启用，默认开 */
     suspend fun isVadEnabled(): Boolean =
@@ -349,29 +350,5 @@ class ConfigManager(private val context: Context) {
 
     suspend fun setVadEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_VAD_ENABLED] = enabled }
-    }
-
-    /** 声纹人物识别是否启用，默认开 */
-    suspend fun isSpeakerIdEnabled(): Boolean =
-        context.dataStore.data.first()[KEY_SPEAKER_ENABLED] ?: true
-
-    suspend fun setSpeakerIdEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[KEY_SPEAKER_ENABLED] = enabled }
-    }
-
-    /** 声纹匹配阈值，默认 0.55 */
-    suspend fun getSpeakerThreshold(): Float =
-        context.dataStore.data.first()[KEY_SPEAKER_THRESHOLD] ?: 0.55f
-
-    suspend fun setSpeakerThreshold(value: Float) {
-        context.dataStore.edit { it[KEY_SPEAKER_THRESHOLD] = value.coerceIn(0.3f, 0.9f) }
-    }
-
-    /** 主人称呼，默认"主人" */
-    suspend fun getSpeakerOwnerName(): String =
-        context.dataStore.data.first()[KEY_SPEAKER_OWNER_NAME] ?: "主人"
-
-    suspend fun setSpeakerOwnerName(name: String) {
-        context.dataStore.edit { it[KEY_SPEAKER_OWNER_NAME] = name.ifBlank { "主人" } }
     }
 }

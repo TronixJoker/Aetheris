@@ -89,7 +89,7 @@ dependencies {
     // OkHttp for WebSocket
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // sherpa-onnx（本地 VAD 语音端点检测 + 声纹人物识别）
+    // sherpa-onnx（本地 VAD 语音端点检测；声纹人物识别已移除，AAR 保留供 VAD 使用）
     implementation(files("libs/sherpa-onnx.aar"))
 
     // Jsoup for HTML parsing (web search)

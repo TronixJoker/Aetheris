@@ -153,18 +153,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _otaStatus = MutableStateFlow<String?>(null)
     val otaStatus: StateFlow<String?> = _otaStatus
 
-    // ==================== 本地 VAD + 声纹识别（sherpa-onnx） ====================
-    // 客户端 VAD：说完话自动停止识别，不再依赖服务端判定
+    // ==================== 本地 VAD（sherpa-onnx） ====================
+    // 客户端 VAD：说完话自动停止识别，不再依赖服务端判定。
+    // 注：「人物识别（声纹）」已彻底移除（2026-09 派单）：其 CAM++ 模型加载
+    //   （28MB / 1-2s）与每句串行推理原本拖慢「说完→出结果」链路，现已连同
+    //   模型资产、配置项、设置页 UI 一并清除，不留开关；老用户本地残留的
+    //   声纹档案由 [com.xiaozhi.android.audio.LegacySpeakerDataCleaner] 一次性清理。
     private var speechEndDetector: com.xiaozhi.android.audio.SpeechEndDetector? = null
-    // 声纹人物识别：识别当前说话人（主人/陌生人）
-    private var speakerRecognition: com.xiaozhi.android.audio.SpeakerRecognitionManager? = null
     @Volatile private var vadAutoStopEnabled = true
-    @Volatile private var speakerIdEnabled = true
-    // 最近一次识别到的说话人（stt 文本到达时标注后清空）
-    @Volatile private var lastSpeakerLabel: String? = null
-    // 设置页显示的声纹状态文本
-    private val _speakerStatus = MutableStateFlow("初始化中...")
-    val speakerStatus: StateFlow<String> = _speakerStatus
 
     // 防止 init() 被重复调用（Compose 重组会多次执行），避免重复 collect 和连接
     private var isInitialized = false
@@ -200,7 +196,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 后台初始化本地 VAD + 声纹识别（模型加载约 1-2 秒，不阻塞连接）
+        // 后台初始化本地 VAD（IO 线程加载模型，不阻塞连接），
+        // 并顺带一次性清理历史版本遗留的声纹档案（人物识别已移除）
         initSpeechModules()
 
         viewModelScope.launch {
@@ -529,10 +526,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Speech-to-text results
                     val text = data["text"]?.jsonPrimitive?.content ?: ""
                     if (text.isNotEmpty()) {
-                        // 声纹识别结果标注（识别发生在语音结束时刻，此处消费）
-                        val tag = lastSpeakerLabel
-                        lastSpeakerLabel = null
-                        addLog(if (tag != null) "用户【$tag】: $text" else "用户: $text")
+                        // （原「声纹标注说话人前缀」已随人物识别功能移除）
+                        addLog("用户: $text")
                         // 收到识别结果后切到 THINKING：停止"聆听中"粒子，
                         // 宠物显示思考动画，让用户知道"说完了，正在处理"
                         _deviceState.value = DeviceState.THINKING
@@ -1211,17 +1206,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addLog("停止聆听")
     }
 
-    // ==================== 本地 VAD + 声纹识别 ====================
+    // ==================== 本地 VAD ====================
 
     /**
-     * 后台初始化本地 VAD 与声纹识别（IO 线程加载模型，约 1-2 秒）。
+     * 后台初始化本地 VAD（IO 线程加载模型，约 1 秒内）。
      * 失败不影响基础语音功能，仅关闭对应特性。
+     * （原「声纹识别初始化」已随人物识别功能移除，见类字段注释）
      */
     private fun initSpeechModules() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 vadAutoStopEnabled = configManager.isVadEnabled()
-                speakerIdEnabled = configManager.isSpeakerIdEnabled()
             } catch (e: Exception) {
                 Log.w(TAG, "读取语音设置失败，使用默认值: ${e.message}")
             }
@@ -1250,52 +1245,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // 声纹人物识别
-            if (speakerIdEnabled) {
-                try {
-                    val mgr = com.xiaozhi.android.audio.SpeakerRecognitionManager(getApplication())
-                    mgr.threshold = configManager.getSpeakerThreshold()
-                    mgr.ownerName = configManager.getSpeakerOwnerName()
-                    mgr.onIdentified = { name, score ->
-                        onSpeakerIdentified(name, score)
-                    }
-                    mgr.onEnrollProgress = { current, total ->
-                        viewModelScope.launch(Dispatchers.Main) {
-                            addLog("🧠 声纹学习中 ($current/$total)，请继续说话...")
-                            refreshSpeakerStatus()
-                        }
-                    }
-                    mgr.onEnrolled = { name ->
-                        viewModelScope.launch(Dispatchers.Main) {
-                            addLog("✅ 声纹注册完成：$name，已可自动识别说话人")
-                            refreshSpeakerStatus()
-                        }
-                    }
-                    if (mgr.initialize()) {
-                        speakerRecognition = mgr
-                        refreshSpeakerStatus()
-                        if (mgr.isEnrolled) {
-                            addLog("✅ 声纹识别已启用（已注册：$mgr.ownerName）")
-                        } else {
-                            addLog("🧠 声纹识别已启用，前 ${mgr.enrollSegments} 句话将自动注册主人声纹")
-                        }
-                    } else {
-                        _speakerStatus.value = "声纹识别不可用（模型加载失败）"
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "声纹识别初始化失败: ${e.message}")
-                    _speakerStatus.value = "声纹识别不可用"
-                }
-            } else {
-                _speakerStatus.value = "声纹识别已关闭"
+            // 人物识别（声纹）已彻底移除，不再加载 speaker_model.onnx，
+            // 也不再产生任何初始化耗时与常驻内存。
+            // 唯一保留动作：一次性清理老版本升级用户的遗留声纹档案数据
+            // （生物特征隐私数据，静默删除，失败不影响任何功能）
+            runCatching {
+                // 注意：getApplication<T> 是泛型方法（T : Application），直接传给
+                // 形参为 File 的清理函数会让类型推断产生双上界冲突，故显式指定
+                val removed = com.xiaozhi.android.audio.LegacySpeakerDataCleaner
+                    .purgeLegacySpeakerProfiles(getApplication<android.app.Application>().filesDir)
+                if (removed > 0) Log.i(TAG, "已清理历史版本遗留声纹档案 $removed 个文件")
             }
         }
     }
 
     /**
      * 本地 VAD 检测到一段语音结束（VAD 工作线程回调）。
-     * 1. 用该语音段做声纹识别
-     * 2. 过 [EndpointGracePolicy] 弹性宽限后自动结束本轮聆听（v2.3.9.1 端点自适应）
+     * 过 [EndpointGracePolicy] 弹性宽限后自动结束本轮聆听（v2.3.9.1 端点自适应）。
+     *
+     * 人物识别移除说明（2026-09 派单）：原实现会在本回调内【同步】执行声纹
+     * 提取（CAM++ 模型，1 线程 CPU，整段音频前向推理），带来两重延迟——
+     *  ① 推理耗时直接串在端点收尾之前，宽限计时起点被推迟 → 每句话的
+     *     「说完→出结果」固定叠加数十至数百毫秒（低端机更久）；
+     *  ② 推理期间 VAD 工作线程被占死，帧级续说检测（[onLocalSpeechResumed]）
+     *     无法及时感知，宽限内续说的撤销灵敏度被拖低。
+     * 移除后本回调只做端点收尾，零额外耗时。
      *
      * v2.3.9.1 语义变化：本地 VAD 在静音 1.2s 时切段（v2.3.9 固定 1.6s）——切段
      * ≠ 说完了：切段后先启动一道弹性宽限计时（300-400ms 自适应），宽限内用户
@@ -1319,16 +1293,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!listenGate.everOpened) {
             Log.w(TAG, "ListenGate 漏判观测: 本地VAD判定说完(${durationMs}ms)但上传门从未打开，本次语音未上传服务端")
             dumpMicDiagnostics("GATE_NEVER_OPENED")
-        }
-
-        // 声纹识别（当前线程执行，约几十毫秒）
-        val mgr = speakerRecognition
-        if (speakerIdEnabled && mgr != null && mgr.enabled) {
-            try {
-                mgr.processSpeech(samples)
-            } catch (e: Exception) {
-                Log.w(TAG, "声纹识别失败: ${e.message}")
-            }
         }
 
         if (!vadAutoStopEnabled) return
@@ -1420,65 +1384,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 声纹识别结果（VAD 工作线程回调）：记录说话人，stt 到达时标注 */
-    private fun onSpeakerIdentified(name: String, score: Float) {
-        lastSpeakerLabel = name.ifEmpty { "陌生人" }
-        viewModelScope.launch(Dispatchers.Main) {
-            if (name.isNotEmpty()) {
-                addLog("👤 说话人：$name（相似度 ${"%.0f%%".format(score * 100)}）")
-            } else {
-                addLog("👤 说话人：陌生人")
-            }
-        }
-    }
-
-    /** 刷新声纹状态文本（设置页显示） */
-    fun refreshSpeakerStatus() {
-        val mgr = speakerRecognition
-        _speakerStatus.value = when {
-            !speakerIdEnabled -> "声纹识别已关闭"
-            mgr == null || !mgr.enabled -> "声纹识别不可用（模型加载失败）"
-            mgr.isEnrolled -> "已注册：${mgr.ownerName}（共 ${mgr.registeredCount} 人）"
-            else -> "未注册（说完 ${mgr.enrollSegments} 句话后自动注册主人）"
-        }
-    }
-
-    /** 重置声纹档案（设置页入口）：清空后下次对话重新注册 */
-    fun resetSpeakerProfiles() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val mgr = speakerRecognition
-            if (mgr == null || !mgr.enabled) {
-                viewModelScope.launch(Dispatchers.Main) {
-                    addLog("⚠️ 声纹识别未启用，无需重置")
-                }
-                return@launch
-            }
-            mgr.resetProfiles()
-            viewModelScope.launch(Dispatchers.Main) {
-                addLog("🗑️ 声纹档案已重置，下次对话将重新注册主人")
-                refreshSpeakerStatus()
-            }
-        }
-    }
-
-    /** 设置页保存后热应用语音设置（无需重启） */
+    /** 设置页保存后热应用语音设置（无需重启）。
+     *  （原声纹阈值/称呼热应用逻辑已随人物识别功能移除，仅保留 VAD 开关热应用） */
     fun applySpeechSettings() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 vadAutoStopEnabled = configManager.isVadEnabled()
-                speakerIdEnabled = configManager.isSpeakerIdEnabled()
-
-                val mgr = speakerRecognition
-                if (mgr != null) {
-                    mgr.threshold = configManager.getSpeakerThreshold()
-                    val newName = configManager.getSpeakerOwnerName()
-                    if (newName != mgr.ownerName && mgr.isEnrolled) {
-                        // 改名：删除旧档案并以新名字保存
-                        mgr.renameOwner(newName)
-                    }
-                    mgr.ownerName = newName
-                }
-                refreshSpeakerStatus()
             } catch (e: Exception) {
                 Log.w(TAG, "应用语音设置失败: ${e.message}")
             }
