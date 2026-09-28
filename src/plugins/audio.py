@@ -32,9 +32,8 @@ class AudioPlugin(Plugin):
         self._silence_token = 0
         self._in_silence_period = False
         # 客户端 VAD（说完话自动停止识别）
+        # （声纹人物识别已彻底移除，见群内派单：模型加载与每句串行推理拖慢识别链路）
         self._vad_detector = None
-        # 声纹人物识别
-        self._speaker_mgr = None
 
     async def setup(self, ctx: "PluginContext", cmd: "PluginCommands") -> None:
         await super().setup(ctx, cmd)
@@ -59,12 +58,10 @@ class AudioPlugin(Plugin):
 
             # 订阅配置变更事件
             ctx.event_bus.on(Events.CONFIG_CHANGED, self._on_config_changed)
-            # 订阅声纹重置请求（来自设置界面）
-            ctx.event_bus.on(Events.SPEAKER_RESET_REQUEST, self._on_speaker_reset)
 
-            # 初始化客户端 VAD + 声纹识别（模型加载放后台任务，不阻塞启动）
+            # 初始化客户端 VAD（模型加载放后台任务，不阻塞启动）
             self._init_speech_modules()
-            if self._vad_detector or self._speaker_mgr:
+            if self._vad_detector:
                 self._cmd.spawn(self._load_speech_models(), "speech-models")
 
         except Exception as e:
@@ -80,7 +77,7 @@ class AudioPlugin(Plugin):
                 pass
 
     def _init_speech_modules(self) -> None:
-        """创建 VAD 与声纹识别实例（不加载模型）."""
+        """创建 VAD 实例（不加载模型）."""
         try:
             vad_enabled = bool(
                 self._ctx.get_config().get_config("VAD_OPTIONS.ENABLED", True)
@@ -94,25 +91,8 @@ class AudioPlugin(Plugin):
             logger.warning(f"VAD 初始化失败（不影响基础功能）: {e}")
             self._vad_detector = None
 
-        try:
-            spk_enabled = bool(
-                self._ctx.get_config().get_config("SPEAKER_ID_OPTIONS.ENABLED", True)
-            )
-            if spk_enabled:
-                from src.audio_processing.speaker_recognition import (
-                    SpeakerRecognitionManager,
-                )
-
-                self._speaker_mgr = SpeakerRecognitionManager()
-                self._speaker_mgr.on_identified = self._on_speaker_identified
-                self._speaker_mgr.on_enroll_progress = self._on_enroll_progress
-                self._speaker_mgr.on_enrolled = self._on_enrolled
-        except Exception as e:
-            logger.warning(f"声纹识别初始化失败（不影响基础功能）: {e}")
-            self._speaker_mgr = None
-
     async def _load_speech_models(self) -> None:
-        """后台加载 VAD / 声纹模型并挂载到音频管线."""
+        """后台加载 VAD 模型并挂载到音频管线."""
         try:
             if self._vad_detector is not None:
                 ok = await asyncio.to_thread(self._vad_detector.start)
@@ -125,30 +105,12 @@ class AudioPlugin(Plugin):
             logger.warning(f"VAD 模型加载失败（自动停止识别不可用）: {e}")
             self._vad_detector = None
 
-        try:
-            if self._speaker_mgr is not None:
-                ok = await asyncio.to_thread(self._speaker_mgr.initialize)
-                if ok:
-                    logger.info("声纹人物识别已启用")
-                else:
-                    self._speaker_mgr = None
-        except Exception as e:
-            logger.warning(f"声纹模型加载失败（人物识别不可用）: {e}")
-            self._speaker_mgr = None
-
     def _on_speech_end(self, samples, duration_ms: float) -> None:
         """VAD 检测到用户说完一句话（工作线程调用）.
 
-        1. 用该语音段做声纹识别
-        2. 通知容器自动结束本轮监听
+        通知容器自动结束本轮监听。
+        （原第 1 步「声纹识别」已随人物识别功能移除）
         """
-        # 声纹识别（在本线程执行，约几十毫秒，不阻塞音频采集）
-        if self._speaker_mgr is not None and self._speaker_mgr.enabled:
-            try:
-                self._speaker_mgr.process_speech(samples)
-            except Exception as e:
-                logger.debug(f"声纹识别失败: {e}")
-
         # 自动停止识别（调度回事件循环）
         if self._vad_detector is not None:
             try:
@@ -156,67 +118,11 @@ class AudioPlugin(Plugin):
             except Exception as e:
                 logger.warning(f"调度自动停止失败: {e}")
 
-    def _on_speaker_identified(self, name: str, score: float) -> None:
-        """声纹识别结果回调（工作线程调用），转发到事件总线."""
-        try:
-            self._cmd.schedule_command_nowait(self._emit_speaker_event, name, score)
-        except Exception as e:
-            logger.debug(f"调度声纹事件失败: {e}")
-
-    def _on_enroll_progress(self, current: int, total: int) -> None:
-        """声纹注册进度回调（工作线程调用）."""
-        try:
-            self._cmd.schedule_command_nowait(
-                self._emit_enroll_event, "enroll_progress", current, total
-            )
-        except Exception as e:
-            logger.debug(f"调度注册进度事件失败: {e}")
-
-    def _on_enrolled(self, name: str) -> None:
-        """声纹注册完成回调（工作线程调用）."""
-        try:
-            self._cmd.schedule_command_nowait(
-                self._emit_enroll_event, "enrolled", 0, 0, name
-            )
-        except Exception as e:
-            logger.debug(f"调度注册完成事件失败: {e}")
-
-    async def _emit_speaker_event(self, name: str, score: float) -> None:
-        """在事件循环中发出声纹识别事件（UI 插件消费）."""
-        try:
-            await self._ctx.event_bus.emit(
-                Events.SPEAKER_IDENTIFIED,
-                {"type": "identified", "name": name, "score": score},
-            )
-        except Exception as e:
-            logger.debug(f"发出声纹事件失败: {e}")
-
-    async def _emit_enroll_event(
-        self, kind: str, current: int = 0, total: int = 0, name: str = ""
-    ) -> None:
-        """在事件循环中发出声纹注册事件（UI 插件消费）."""
-        try:
-            data = {"type": kind, "current": current, "total": total, "name": name}
-            await self._ctx.event_bus.emit(Events.SPEAKER_IDENTIFIED, data)
-        except Exception as e:
-            logger.debug(f"发出注册事件失败: {e}")
-
     async def _on_config_changed(self, data=None):
         """配置变更时重新加载音频设备."""
         if self.codec:
             logger.info("AudioPlugin: 收到配置变更事件，重新加载音频设备")
             await self.codec.reload_devices()
-
-    async def _on_speaker_reset(self, _=None) -> None:
-        """处理声纹重置请求：清空已注册声纹，重新进入注册流程."""
-        if self._speaker_mgr is None or not self._speaker_mgr.enabled:
-            logger.info("声纹识别未启用，无需重置")
-            return
-        try:
-            self._speaker_mgr.reset_profiles()
-            logger.info("声纹档案已重置，将重新注册主人")
-        except Exception as e:
-            logger.error(f"重置声纹档案失败: {e}", exc_info=True)
 
     async def on_device_state_changed(self, state):
         """

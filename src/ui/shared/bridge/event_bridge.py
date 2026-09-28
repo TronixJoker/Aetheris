@@ -157,10 +157,7 @@ class EventBridge(QObject):
         """设置激活码获取函数."""
         self._activation_code_getter = getter
 
-    @Slot()
-    def resetSpeakerProfile(self):
-        """重置已注册声纹（QML 调用）→ 通知 AudioPlugin 清空声纹档案."""
-        logger.info("EventBridge: 请求重置声纹档案")
-        self._emit_event(Events.SPEAKER_RESET_REQUEST)
+    # （resetSpeakerProfile 槽已随人物识别功能移除：QML 声纹页已删除，
+    #   SPEAKER_RESET_REQUEST 事件亦不复存在）
 
     # ========== Python → QML (发射信号) ==========
