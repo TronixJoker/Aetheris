@@ -382,6 +382,8 @@ fun EmotionDisplay(
             DeviceState.SPEAKING -> XiaozhiBlue
             DeviceState.CONNECTING -> XiaozhiOrange
             DeviceState.THINKING -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            // v2.3.10 新增「识别中」：与 THINKING 同为轮次进行中的等待视觉
+            DeviceState.WAITING_RESULT -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             DeviceState.IDLE -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
         },
         label = "emotion_color"
@@ -571,7 +573,8 @@ private fun DrawScope.drawStateAura(
                 )
             }
         }
-        DeviceState.THINKING -> {
+        // v2.3.10：「识别中」与思考共用同款紫色粒子（同为轮次进行中的等待视觉）
+        DeviceState.THINKING, DeviceState.WAITING_RESULT -> {
             // 8 个紫色小粒子：小范围缓慢游动
             for (i in 0 until 8) {
                 val baseAngle = hash01(i * 6.17f) * TAU_F
@@ -1338,9 +1341,10 @@ fun MainControlButton(
     val isDisabled = activationState != ActivationService.ActivationState.ACTIVATED &&
             activationState != ActivationService.ActivationState.ACTIVATION_SUCCESS
 
-    // 活跃状态（聆听、说话或思考）显示波浪线，否则显示直线
+    // 活跃状态（聆听、说话、思考或识别中）显示波浪线，否则显示直线
     val isActive = !isDisabled &&
-        (deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING || deviceState == DeviceState.THINKING)
+        (deviceState == DeviceState.LISTENING || deviceState == DeviceState.SPEAKING ||
+            deviceState == DeviceState.THINKING || deviceState == DeviceState.WAITING_RESULT)
 
     // 线条颜色随状态变化
     val lineColor = when {
@@ -1348,6 +1352,8 @@ fun MainControlButton(
         deviceState == DeviceState.LISTENING -> XiaozhiGreen
         deviceState == DeviceState.SPEAKING -> XiaozhiOrange
         deviceState == DeviceState.THINKING -> Color(0xFF9C27B0)  // 紫色
+        // v2.3.10：「识别中」与思考同为紫色波浪（轮次进行中视觉）
+        deviceState == DeviceState.WAITING_RESULT -> Color(0xFF9C27B0)
         deviceState == DeviceState.CONNECTING -> XiaozhiOrange
         else -> Color.White
     }
@@ -1450,6 +1456,8 @@ fun StatusText(
         deviceState == DeviceState.IDLE -> "点击按钮开始对话"
         deviceState == DeviceState.LISTENING -> "正在聆听..."
         deviceState == DeviceState.SPEAKING -> "AI 正在说话..."
+        // v2.3.10：收尾后、结果返回前的「识别中」窗口（用户口径），不再误示 IDLE
+        deviceState == DeviceState.WAITING_RESULT -> "正在识别中..."
         deviceState == DeviceState.THINKING -> "正在思考..."
         deviceState == DeviceState.CONNECTING -> "正在连接..."
         else -> "就绪"

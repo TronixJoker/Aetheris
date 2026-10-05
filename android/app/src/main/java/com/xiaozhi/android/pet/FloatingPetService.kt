@@ -179,6 +179,8 @@ class FloatingPetService : Service() {
                     DeviceState.SPEAKING -> PetGLSurfaceView.PetRenderer.STATE_SPEAKING
                     DeviceState.CONNECTING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
                     DeviceState.THINKING -> PetGLSurfaceView.PetRenderer.STATE_THINKING
+                    // v2.3.10：「识别中」与思考同为等待视觉（不落回 IDLE 自转）
+                    DeviceState.WAITING_RESULT -> PetGLSurfaceView.PetRenderer.STATE_THINKING
                     else -> PetGLSurfaceView.PetRenderer.STATE_IDLE
                 }
                 Log.d(TAG, "Pet state -> $petState (deviceState=$state)")

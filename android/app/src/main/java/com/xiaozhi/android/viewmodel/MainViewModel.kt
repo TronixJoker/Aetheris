@@ -26,6 +26,7 @@ import com.xiaozhi.android.audio.XiaozhiForegroundService
 import com.xiaozhi.android.config.ConfigManager
 import com.xiaozhi.android.control.CommandExecutor
 import com.xiaozhi.android.model.DeviceState
+import com.xiaozhi.android.network.ResultWaitWatchdogPolicy
 import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.pet.FloatingPetService
 import com.xiaozhi.android.update.UpdateManager
@@ -486,6 +487,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     when (state) {
                         "start" -> {
                             _deviceState.value = DeviceState.SPEAKING
+                            // v2.3.10：TTS 开始 = 两个等待窗口全部解除（无论 stt 是否
+                            // 先到——服务端也可能直接开说），撤销所有结果等待看门狗
+                            cancelResultWaitWatchdogs()
                             // 重置播放器：清除上一轮打断后可能残留的音频，恢复播放
                             audioPlayer.resetForNewPlayback()
                             // TTS 开始：开启豁免窗（1.5s，旧实现实际只有 1s）——
@@ -531,6 +535,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // 收到识别结果后切到 THINKING：停止"聆听中"粒子，
                         // 宠物显示思考动画，让用户知道"说完了，正在处理"
                         _deviceState.value = DeviceState.THINKING
+                        // v2.3.10 看门狗接力：首个结果已到 → 撤销阶段一（收尾→结果），
+                        // 改守阶段二"stt→tts start"窗口——LLM/TTS 链路挂起时
+                        // 「正在思考」不再无限卡住（ResultWaitWatchdogPolicy）
+                        resultWaitJob?.cancel()
+                        armTtsStartWaitWatchdog()
                         // 本地命令解析：直接识别常用语音命令并执行，不依赖服务器 MCP 工具调用
                         parseAndExecuteLocalCommand(text)
                     } else {
@@ -904,6 +913,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             DeviceState.THINKING -> {
                 addLog("⏳ 正在思考中，请稍候...")
             }
+            DeviceState.WAITING_RESULT -> {
+                // v2.3.10：收尾→结果窗口的等待态，与 THINKING 同为"轮次进行中"，
+                // 点按不切换状态；若服务端结果迟迟不到，看门狗（≤6s）会自动恢复聆听
+                addLog("⏳ 正在识别中，请稍候...")
+            }
         }
     }
 
@@ -1196,6 +1210,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pendingEndpointJob?.cancel()
         endpointCoordinator.reset()
         micHealthJob?.cancel()
+        // 撤销结果等待看门狗（v2.3.10）：手动停止/收尾清理时不再需要；
+        // 正常收尾路径会在 stopListening 之后重新挂载（进入 WAITING_RESULT 态）
+        cancelResultWaitWatchdogs()
         _deviceState.value = DeviceState.IDLE
         webSocketManager.sendListenStop()
         audioRecorder.stop()
@@ -1204,6 +1221,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // B4：回收兜底前台服务（宠物未启用时）
         maybeStopMicForegroundService()
         addLog("停止聆听")
+    }
+
+    // ==================== 结果等待看门狗（v2.3.10） ====================
+    // 修复「说完话后停留在识别中迟迟不结束 / 停止之后半天识别不出内容」：
+    // 收尾上报 listen stop 之后，客户端对服务端结果（stt / tts start）原先是
+    // 无限等待——STT/LLM/TTS 链路任一环节挂起都会让用户永远卡在等待态。
+    // 现按 [ResultWaitWatchdogPolicy] 对两个窗口分别设防（有界等待+自动恢复）：
+    //   阶段一 WAITING_RESULT（收尾→首个结果）：超时恢复聆听；
+    //   阶段二 THINKING（stt→tts start）：超时恢复聆听。
+    // 服务端稍后补发的结果不受影响：stt/tts start 处理器照常切换状态。
+    // 手动停止（stopListening）会撤销两个看门狗。
+
+    /** 阶段一看门狗 Job：WAITING_RESULT 态等待 stt / tts start */
+    private var resultWaitJob: kotlinx.coroutines.Job? = null
+
+    /** 阶段二看门狗 Job：THINKING 态等待 tts start */
+    private var ttsStartWaitJob: kotlinx.coroutines.Job? = null
+
+    /** 收尾后挂载：阶段一看门狗（结果迟迟不到 → 提示 + 自动恢复聆听） */
+    private fun armResultWaitWatchdog() {
+        resultWaitJob?.cancel()
+        resultWaitJob = viewModelScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(ResultWaitWatchdogPolicy.RESULT_WAIT_TIMEOUT_MS)
+            val shouldRecover = ResultWaitWatchdogPolicy.shouldRecover(
+                phase = ResultWaitWatchdogPolicy.WaitPhase.WAIT_RESULT,
+                elapsedMs = ResultWaitWatchdogPolicy.RESULT_WAIT_TIMEOUT_MS,
+                stillWaiting = _deviceState.value == DeviceState.WAITING_RESULT,
+                connected = webSocketManager.connectionState.value ==
+                    WebSocketManager.ConnectionState.CONNECTED
+            )
+            if (shouldRecover) {
+                // B5 风格埋点：等待超时=疑似服务端未返回结果（或整句未送达），
+                // dump 快照供用户反馈闭环
+                dumpMicDiagnostics("STT_RESULT_TIMEOUT")
+                addLog("⏳ 迟迟未收到识别结果，已自动恢复聆听，请再说一次")
+                tryStartListeningInternal()
+            }
+        }
+    }
+
+    /** 非空 stt 到达后挂载：阶段二看门狗（tts start 迟迟不到 → 提示 + 自动恢复聆听） */
+    private fun armTtsStartWaitWatchdog() {
+        ttsStartWaitJob?.cancel()
+        ttsStartWaitJob = viewModelScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(ResultWaitWatchdogPolicy.TTS_START_WAIT_TIMEOUT_MS)
+            val shouldRecover = ResultWaitWatchdogPolicy.shouldRecover(
+                phase = ResultWaitWatchdogPolicy.WaitPhase.WAIT_TTS_START,
+                elapsedMs = ResultWaitWatchdogPolicy.TTS_START_WAIT_TIMEOUT_MS,
+                stillWaiting = _deviceState.value == DeviceState.THINKING,
+                connected = webSocketManager.connectionState.value ==
+                    WebSocketManager.ConnectionState.CONNECTED
+            )
+            if (shouldRecover) {
+                addLog("⏳ AI 迟迟未开始回复，已自动恢复聆听")
+                tryStartListeningInternal()
+            }
+        }
+    }
+
+    /** 撤销两个结果等待看门狗（手动停止 / tts start 到达 / 正常轮次推进时调用） */
+    private fun cancelResultWaitWatchdogs() {
+        resultWaitJob?.cancel()
+        ttsStartWaitJob?.cancel()
     }
 
     // ==================== 本地 VAD ====================
@@ -1293,6 +1373,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!listenGate.everOpened) {
             Log.w(TAG, "ListenGate 漏判观测: 本地VAD判定说完(${durationMs}ms)但上传门从未打开，本次语音未上传服务端")
             dumpMicDiagnostics("GATE_NEVER_OPENED")
+            // v2.3.10：用户可见提示——整句被上传门槛挡下、服务端一个字都没收到，
+            // 后续必然「未识别到内容」。明确告知原因（而不是让用户面对无解释的
+            // "识别不出"），上传门槛治理本身保持不变（守噪音治理成果）
+            addLog("⚠️ 听到你说话但音量偏轻，未能上传（可靠近手机或稍微大声一点）")
         }
 
         if (!vadAutoStopEnabled) return
@@ -1317,6 +1401,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 干净收尾：确实说完了。记录收尾时刻（秒续说观测用），stopListening 通知服务端
             lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
             stopListening()
+            // v2.3.10：收尾后进入「识别中」（WAITING_RESULT）而非回落 IDLE——
+            // 会话仍在进行、服务端正在识别，旧实现显示"点击按钮开始对话"与事实
+            // 相悖（用户误以为对话卡死）；同时挂结果等待看门狗（6s 有界自愈）
+            _deviceState.value = DeviceState.WAITING_RESULT
+            armResultWaitWatchdog()
             addLog("🛑 检测到你说完了（${durationMs / 1000.0}s），等待识别结果...")
         }
     }
@@ -1372,6 +1461,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
                     Log.d(TAG, "尾扫兜底收尾：gen=$claimedGeneration 距最后说话 ${voiceAgeMs}ms")
                     stopListening()
+                    // 与干净收尾同语义：进入「识别中」+ 挂结果等待看门狗（v2.3.10）
+                    _deviceState.value = DeviceState.WAITING_RESULT
+                    armResultWaitWatchdog()
                     addLog("🛑 检测到你说完了，等待识别结果...")
                 }
                 EndpointGraceCoordinator.TailScanDecision.POSTPONE ->

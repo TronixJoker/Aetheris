@@ -108,12 +108,12 @@ class SpeechEndDetector(private val context: Context) {
         // v2.3.9：400ms → 600ms，与 ListenGatePolicy.holdoff 对齐，
         // 覆盖更长的回声尾音衰减窗
         private const val ARM_BLIND_MS = 600L
-        // 触发"说完停止"的最短语音段时长：
-        // 短于它的段（"嗯"、"啊"等口头禅开头 + 停顿思考）不触发停止，
-        // 否则整句只剩"嗯"被送去识别。桌面端是 0.3s（近场），手机远场需更大。
-        private const val MIN_SPEECH_END_MS = 1200L
-        // 最长语音段：超过此值强制切段（防止用户一直说话不停导致内存堆积）
-        private const val MAX_SPEECH_MS = 15000L
+        // 语音段→端点收尾的时长判定已下沉 [SpeechSegmentPolicy]（纯策略可单测）。
+        // v2.3.10 修复：旧实现 `durationMs in 1200..15000` 把 0.6~1.2s 的短命令
+        // （"好的"/"几点了"）与 >15s 的长独白段静默丢弃 → 端点永不触发 →
+        // 「识别中」无限悬挂（09-30 用户反馈）。现为：>=0.6s 即端点
+        // （<0.4s 在 VAD 成段层已被滤掉，0.6~1.2s 误切由弹性宽限撤销兜住），
+        // >15s 强制端点（对齐"强制切段"的设计意图）。
     }
 
     /** 加载模型并启动工作线程。必须在后台线程调用。 */
@@ -250,11 +250,21 @@ class SpeechEndDetector(private val context: Context) {
                     localVad.pop()
                     val samples = seg.samples
                     val durationMs = samples.size * 1000L / SAMPLE_RATE
-                    // 关键过滤：只有足够长的语音段才触发"说完停止"。
-                    // "嗯"等口头禅（<1.2s）+ 停顿思考是正常语流，不能当作说完了
-                    if (durationMs in MIN_SPEECH_END_MS..MAX_SPEECH_MS) {
-                        Log.d(TAG, "检测到语音段: ${durationMs}ms")
-                        onSpeechEnd?.invoke(samples, durationMs)
+                    // 段长判定下沉 [SpeechSegmentPolicy]（v2.3.10 短命令/长独白悬挂修复）：
+                    // ENDPOINT = 正常端点；FORCE_ENDPOINT = 超长段强制收尾；
+                    // DROP = 过短（口头禅/瞬态）丢弃，维持"不因嗯啊误停"的既有治理。
+                    when (SpeechSegmentPolicy.decide(durationMs)) {
+                        SpeechSegmentPolicy.Decision.ENDPOINT -> {
+                            Log.d(TAG, "检测到语音段: ${durationMs}ms")
+                            onSpeechEnd?.invoke(samples, durationMs)
+                        }
+                        SpeechSegmentPolicy.Decision.FORCE_ENDPOINT -> {
+                            Log.w(TAG, "长语音段(${durationMs}ms)超上限，强制触发端点收尾")
+                            onSpeechEnd?.invoke(samples, durationMs)
+                        }
+                        SpeechSegmentPolicy.Decision.DROP -> {
+                            Log.d(TAG, "语音段(${durationMs}ms)短于端点下限，丢弃不收尾")
+                        }
                     }
                 }
             } catch (e: Exception) {
