@@ -256,9 +256,14 @@ class SpeechEndDetector(private val context: Context) {
     }
 
     private fun reset() {
-        try {
-            vad?.reset()
-        } catch (_: Exception) {
+        // R3（评审复评 🟡）：vad?.reset() 可从主线程路径触发（arm() → reset()），
+        // 与 worker 线程的 acceptWaveform 并发不安全（native 状态重置 vs 推理）——
+        // 纳入 vadLock 串行化，与 [loadVad]/[stop]/[processOnce] 同一互斥域
+        synchronized(vadLock) {
+            try {
+                vad?.reset()
+            } catch (_: Exception) {
+            }
         }
         synchronized(sampleBuffer) {
             sampleBuffer.clear()
@@ -328,6 +333,12 @@ class SpeechEndDetector(private val context: Context) {
                     } catch (e: Exception) {
                         Log.w(TAG, "VAD 推理异常: ${e.message}")
                         handleVadError("acceptWaveform")
+                        // R1（评审复评 🔴 必修）：handleVadError 原地重建后旧实例已
+                        // release、vad 已换新——本窗剩余窗口继续用陈旧 localVad 是
+                        // 对已释放 native 实例的调用（SIGSEGV 闪退）。锁内核对实例
+                        // 身份，被替换即放弃本窗剩余工作（sampleBuffer 已攒样本
+                        // 保留，下窗续攒；新实例从下一窗开始接管）
+                        if (vad !== localVad) return
                     }
                 }
             }
@@ -341,6 +352,9 @@ class SpeechEndDetector(private val context: Context) {
             } catch (e: Exception) {
                 Log.w(TAG, "VAD 状态读取异常: ${e.message}")
                 handleVadError("isSpeechDetected")
+                // R1 同款守卫（评审复评 🔴）：重建后 localVad 已 release，
+                // 后续取段循环不得再触碰——实例被替换即终止本窗
+                if (vad !== localVad) return
                 wasInSpeech // 异常时维持原状态，避免误发跳变
             }
             if (inSpeech && !wasInSpeech) {

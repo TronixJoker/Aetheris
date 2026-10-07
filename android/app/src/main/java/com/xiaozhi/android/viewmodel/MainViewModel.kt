@@ -161,6 +161,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     //   （28MB / 1-2s）与每句串行推理原本拖慢「说完→出结果」链路，现已连同
     //   模型资产、配置项、设置页 UI 一并清除，不留开关；老用户本地残留的
     //   声纹档案由 [com.xiaozhi.android.audio.LegacySpeakerDataCleaner] 一次性清理。
+    // R2（评审复评 🟡）：跨线程读写——录音回调线程 feed 分发读、VAD worker 回调链路
+    // 间接读、主线程写（init/fatal 摘除/重建赋值），@Volatile 保证可见性与禁止重排序
+    @Volatile
     private var speechEndDetector: com.xiaozhi.android.audio.SpeechEndDetector? = null
     @Volatile private var vadAutoStopEnabled = true
 
