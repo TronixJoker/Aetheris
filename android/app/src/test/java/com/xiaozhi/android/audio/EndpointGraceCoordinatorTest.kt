@@ -261,4 +261,79 @@ class EndpointGraceCoordinatorTest {
         // 宽限学习值（收敛/上调结果）跨会话保留
         assertEquals(INITIAL_GRACE_MS, p2.graceMs)
     }
+
+    // ---------- 9. 尾扫链上限（v2.3.11 修复「恒顺延无上限」） ----------
+
+    /**
+     * v2.3.11 悬挂治理：持续人声型噪音（电视/音乐/旁人聊天）让 silero 实时语音
+     * 状态长期为真、距最后说话恒 <1s → 旧实现 POSTPONE 无限顺延、聆听态永久挂起。
+     * 现以尾扫链总时长兜底：达到 TAIL_SCAN_MAX_CHAIN_MS 必须 FORCE_FINALIZE。
+     */
+
+    @Test
+    fun `尾扫链上限-噪音恒刷新最后说话时刻 - 链长达到上限 - 强制收尾`() {
+        val c = newCoordinator()
+        c.onSegmentArrive()
+        // 噪音续说撤销收尾 → 补挂尾扫（链起点=此刻，世代键=返回值）
+        val gen = c.onSpeechResumedWithinGrace()
+        // 6 轮顺延后链长达到 10s 上限，噪音仍在发声（距最后说话 300ms）：
+        // 旧实现第 7 轮继续 POSTPONE 无限循环；新实现必须终结链条
+        val decision = c.onTailScanDue(
+            gen, 300L,
+            EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS,
+        )
+        assertEquals(EndpointGraceCoordinator.TailScanDecision.FORCE_FINALIZE, decision)
+    }
+
+    @Test
+    fun `尾扫链上限-未达上限时噪音仍在说话 - 仍顺延（不提前收）`() {
+        val c = newCoordinator()
+        c.onSegmentArrive()
+        val gen = c.onSpeechResumedWithinGrace()
+        val decision = c.onTailScanDue(
+            gen, 300L,
+            EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS - 1,
+        )
+        assertEquals(EndpointGraceCoordinator.TailScanDecision.POSTPONE, decision)
+    }
+
+    @Test
+    fun `尾扫链上限-已达上限但世代已前进 - 作废（正常收尾接管）`() {
+        val c = newCoordinator()
+        val gen = c.onSegmentArrive().generation
+        c.onSpeechResumedWithinGrace()
+        // 宽限内续说真的成段：世代前进 → 链上限判定之前先被世代核对挡下
+        c.onSegmentArrive()
+        val decision = c.onTailScanDue(
+            gen, 300L,
+            EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS + 1,
+        )
+        assertEquals(EndpointGraceCoordinator.TailScanDecision.VOID, decision)
+    }
+
+    @Test
+    fun `尾扫链上限-强制收尾不污染宽限学习值 - 宽限保持不变`() {
+        val c = newCoordinator()
+        c.onSegmentArrive()
+        val gen = c.onSpeechResumedWithinGrace()
+        val graceBefore = c.graceMs
+        c.onTailScanDue(gen, 300L, EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS)
+        // FORCE_FINALIZE 是兜底不是干净收尾（噪音场景），宽限不得下调
+        assertEquals("兜底收尾不应污染宽限自适应值", graceBefore, c.graceMs)
+    }
+
+    @Test
+    fun `尾扫链上限-链长静音超过门槛 - 优先正常FINALIZE（下调宽限）`() {
+        val c = newCoordinator()
+        c.onSegmentArrive()
+        val gen = c.onSpeechResumedWithinGrace()
+        val graceBefore = c.graceMs
+        // 链长未达上限 + 已静音超 1s：走正常 FINALIZE，宽限按干净收尾规则下调
+        val decision = c.onTailScanDue(
+            gen, VOICE_QUIET_MS + 100,
+            EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS - 1,
+        )
+        assertEquals(EndpointGraceCoordinator.TailScanDecision.FINALIZE, decision)
+        assertTrue("干净收尾应下调宽限", c.graceMs < graceBefore)
+    }
 }

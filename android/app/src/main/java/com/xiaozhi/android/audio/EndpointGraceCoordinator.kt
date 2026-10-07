@@ -40,10 +40,22 @@ class EndpointGraceCoordinator(private val grace: EndpointGracePolicy) {
     enum class TailScanDecision {
         /** 世代已前进（宽限内真的又成段）或会话已重置：正常收尾路径接管，本次尾扫作废 */
         VOID,
-        /** 到期时距最后检出人声不足 [TAIL_SCAN_VOICE_QUIET_MS]（还在说话/刚开口）：顺延重挂 */
+        /** 到期时距最后检出人声不足 [TAIL_SCAN_VOICE_QUIET_MS]（还在说话/刚开口），
+         *  且尾扫链未达总时长上限：顺延重挂 */
         POSTPONE,
         /** 世代未变且已静音超过门槛：确实说完了，执行收尾（stopListening 出结果） */
         FINALIZE,
+        /**
+         * 尾扫链已达 [TAIL_SCAN_MAX_CHAIN_MS] 总时长上限仍未静音（v2.3.11 修复）：
+         * 强制收尾。为什么必须存在——POSTPONE 的顺延条件是「距最后检出人声 <1s」，
+         * 而持续人声型噪音（电视/音乐/旁人聊天）会让 silero 实时语音状态长期为真、
+         * 「最后说话时刻」持续前移却始终不成段（世代不前进），尾扫每轮到期都满足
+         * 顺延条件 → 无限顺延循环 → 聆听态永久挂起（多轮治理未根治的复发路径之一）。
+         * 强制收尾后服务端按已上传音频出结果 + 自动恢复聆听，最坏损失是噪音段被
+         * 识别出一条空/无意义结果，换取「说完必然出结果」不变量成立。
+         * 注意：FORCE_FINALIZE 不下调宽限——这不是干净收尾，宽限学习值不应被噪音污染。
+         */
+        FORCE_FINALIZE,
     }
 
     private val generation = AtomicLong(0)
@@ -61,6 +73,15 @@ class EndpointGraceCoordinator(private val grace: EndpointGracePolicy) {
         /** 尾扫到期允许收尾的最小「距最后检出人声」间隔（评审 🔴-1 指定 >1s）：
          *  说话中 lastVoice 持续刷新 → 恒判定 POSTPONE 顺延，直到真正静音，不伤连续语流 */
         const val TAIL_SCAN_VOICE_QUIET_MS = 1000L
+
+        /**
+         * 尾扫链总时长上限（v2.3.11 修复「恒顺延无上限」）：自本世代尾扫链首次挂载
+         * 起累计（POSTPONE 重挂不清零），达到即强制收尾。取 10s 的依据——每轮
+         * delay ≈ 1.2s 静音线 + 0.3~0.4s 宽限 ≈ 1.5~1.6s，10s ≈ 6 轮顺延；真实
+         * 连续语流 1~2 轮内必然成段接管（世代前进 → VOID），轮得到第 6 轮的
+         * 场景几乎只有「不成段的持续噪音」，此时收尾不伤真实对话。
+         */
+        const val TAIL_SCAN_MAX_CHAIN_MS = 10_000L
     }
 
     /**
@@ -136,16 +157,26 @@ class EndpointGraceCoordinator(private val grace: EndpointGracePolicy) {
      *
      * 判定顺序：
      *  1. 世代核对：宽限内续说真的成了段（世代前进）→ 正常宽限收尾已接管 → VOID；
-     *  2. 静音核查：调用方传入「距最后检出人声的毫秒数」（检测器帧级维护，
+     *  2. 链上限核查：尾扫链已运行 [chainElapsedMs] ≥ [TAIL_SCAN_MAX_CHAIN_MS]
+     *     → FORCE_FINALIZE 强制收尾（v2.3.11 修复：持续噪音下 POSTPONE 恒顺延、
+     *     永不收敛的无上限路径）；
+     *  3. 静音核查：调用方传入「距最后检出人声的毫秒数」（检测器帧级维护，
      *     inSpeech=true 时持续刷新）——不足 [TAIL_SCAN_VOICE_QUIET_MS] 说明还在
      *     说话/刚开口 → POSTPONE 顺延重挂（连续说话一路顺延直到静音）；
-     *  3. 世代未变 + 已静音超门槛 → FINALIZE（下调宽限，与干净收尾同规则）。
+     *  4. 世代未变 + 已静音超门槛 → FINALIZE（下调宽限，与干净收尾同规则）。
      *
      * @param generation 挂载尾扫时帧级续说所属的世代号（[onSpeechResumedWithinGrace] 返回值）
      * @param msSinceLastVoiceMs 距最后一次检出人声的毫秒数（检测器无观测时传 Long.MAX_VALUE）
+     * @param chainElapsedMs 尾扫链自本世代首次挂载起已运行的总毫秒数
+     *        （调用方记录首次挂载时刻，POSTPONE 重挂时透传不清零）
      */
-    fun onTailScanDue(generation: Long, msSinceLastVoiceMs: Long): TailScanDecision {
+    fun onTailScanDue(
+        generation: Long,
+        msSinceLastVoiceMs: Long,
+        chainElapsedMs: Long = 0L,
+    ): TailScanDecision {
         if (this.generation.get() != generation) return TailScanDecision.VOID
+        if (chainElapsedMs >= TAIL_SCAN_MAX_CHAIN_MS) return TailScanDecision.FORCE_FINALIZE
         if (msSinceLastVoiceMs <= TAIL_SCAN_VOICE_QUIET_MS) return TailScanDecision.POSTPONE
         // 兜底收尾 = 干净收尾（最后检出人声已静音超 1s）：宽限同规则下调收敛
         grace.onCleanFinalize()

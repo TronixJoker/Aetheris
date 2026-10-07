@@ -16,6 +16,7 @@ import com.xiaozhi.android.audio.AudioRecorder
 import com.xiaozhi.android.audio.BargeInPolicy
 import com.xiaozhi.android.audio.EndpointGraceCoordinator
 import com.xiaozhi.android.audio.ListenGatePolicy
+import com.xiaozhi.android.audio.ListeningSessionWatchdogPolicy
 import com.xiaozhi.android.audio.MicCaptureMonitor
 import com.xiaozhi.android.audio.MicDiagnosticsFormatter
 import com.xiaozhi.android.audio.MicForegroundPolicy
@@ -1061,6 +1062,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         addLog("🎤 开始聆听...")
+        // 会话级兜底看门狗（v2.3.11）：正常/自动续听/唤醒路径进入聆听后挂载，
+        // 保证本轮聆听无论如何都在 MAX_LISTEN_SESSION_MS 内收敛
+        armListeningSessionWatchdog()
         // B2：新一轮聆听重置"连续静音自愈轮数"
         silentRounds = 0
         // 麦克风健康自检：1.5 秒后若仍无任何有效音频（数字静音），进入带轮次上限的自愈流程
@@ -1119,7 +1123,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 scheduleMicHealthCheck() // 恢复后再自检一轮，确认真正恢复
             } else {
                 dumpMicDiagnostics("SELF_HEAL_RESTART_FAIL")
-                addLog("❌ 麦克风恢复失败，请停止后重试（其他应用可能占用麦克风）")
+                // v2.3.11 悬挂治理：重启失败后聆听态不得挂着——录音已死，端点链路
+                //（切段需要静音帧喂入）必然永不完成，收尾看门狗也要干等 60s。
+                // 立即退出聆听态，把控制权交还用户（提示明确，用户点按即重开）
+                addLog("❌ 麦克风恢复失败，已自动停止聆听（请点按重试；其他应用可能占用麦克风）")
+                stopListening()
             }
         }
     }
@@ -1210,6 +1218,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pendingEndpointJob?.cancel()
         endpointCoordinator.reset()
         micHealthJob?.cancel()
+        // 撤销会话级兜底看门狗（v2.3.11）：正常收尾/手动停止后不再需要；
+        // stopListening 是所有收尾路径（干净收尾/尾扫兜底/会话超时/手动）的必经点
+        sessionListenJob?.cancel()
         // 撤销结果等待看门狗（v2.3.10）：手动停止/收尾清理时不再需要；
         // 正常收尾路径会在 stopListening 之后重新挂载（进入 WAITING_RESULT 态）
         cancelResultWaitWatchdogs()
@@ -1221,6 +1232,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // B4：回收兜底前台服务（宠物未启用时）
         maybeStopMicForegroundService()
         addLog("停止聆听")
+    }
+
+    // ==================== 会话级最长聆听看门狗（v2.3.11） ====================
+    // 修复「说完话不自动停止、一直聆听」悬挂的最后防线：
+    // v2.3.10 的结果等待看门狗只覆盖【收尾后】的 WAITING_RESULT/THINKING 窗口，
+    // LISTENING 态本身无任何时长上限——端点链路任一环失效（VAD 工作线程被 native
+    // 异常瘫痪、AudioRecorder 自愈重建期间喂帧断流、尾扫顺延路径等）都会让聆听态
+    // 永久挂起，用户只能杀 APP。现按 [ListeningSessionWatchdogPolicy] 给单次聆听
+    // 会话设 60s 硬上限：到期仍 LISTENING → 强制收尾（stopListening → WAITING_RESULT
+    // → 结果等待看门狗接管）：服务端已收到的语音正常出结果；从未收到则 6s 后自动
+    // 恢复聆听。把「永久悬挂」收敛为「有界会话 + 可恢复」，满足不变量
+    // 「任何异常/噪音/竞态路径下聆听态都不得永久挂起」。
+
+    /** 会话级看门狗 Job（挂载/撤销见 [armListeningSessionWatchdog]/[stopListening]） */
+    private var sessionListenJob: kotlinx.coroutines.Job? = null
+
+    /** 本轮聆听会话开始时刻（elapsedRealtime，主线程维护） */
+    private var sessionListenStartElapsed = 0L
+
+    /**
+     * 挂载会话级看门狗。所有进入 LISTENING 态的入口都必须调用：
+     * [tryStartListeningInternal]（正常/自动续听/唤醒路径）与 [interruptSpeaking]
+     * （打断重听路径），漏一处即存在无兜底会话。
+     */
+    private fun armListeningSessionWatchdog() {
+        sessionListenStartElapsed = SystemClock.elapsedRealtime()
+        sessionListenJob?.cancel()
+        sessionListenJob = viewModelScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(ListeningSessionWatchdogPolicy.MAX_LISTEN_SESSION_MS)
+            val elapsed = SystemClock.elapsedRealtime() - sessionListenStartElapsed
+            // 到期双核对（策略判定）：仍处于 LISTENING 才动作；正常收尾/被打断/
+            // 手动停止的会话已提前由 stopListening 撤销本 Job，不会到达这里
+            if (!ListeningSessionWatchdogPolicy.shouldForceFinalize(
+                    sessionElapsedMs = elapsed,
+                    stillListening = _deviceState.value == DeviceState.LISTENING,
+                )
+            ) return@launch
+            forceFinalizeListeningSession("SESSION_TIMEOUT(${elapsed / 1000}s)")
+        }
+    }
+
+    /**
+     * 会话级兜底强制收尾：与干净收尾同动作链（保证「说完必然出结果」路径被走一遍），
+     * 仅多一步诊断埋点与用户提示——服务端若已收到有效语音则正常出结果，
+     * 若从未收到（feed 断流/门槛挡下）则空结果处理 + 结果等待看门狗 6s 恢复聆听。
+     * @param reason 触发原因（诊断埋点/日志用）：SESSION_TIMEOUT / VAD_FATAL
+     */
+    private fun forceFinalizeListeningSession(reason: String) {
+        Log.w(TAG, "聆听会话兜底强制收尾: $reason")
+        dumpMicDiagnostics("LISTEN_SESSION_FORCE_FINALIZE")
+        lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
+        stopListening()
+        _deviceState.value = DeviceState.WAITING_RESULT
+        armResultWaitWatchdog()
+        addLog("⏱️ 本次聆听已达上限（${ListeningSessionWatchdogPolicy.MAX_LISTEN_SESSION_MS / 1000}s），自动结束等待识别结果；若无结果将自动恢复聆听")
     }
 
     // ==================== 结果等待看门狗（v2.3.10） ====================
@@ -1303,26 +1369,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 本地 VAD：说完话自动停止识别
             if (vadAutoStopEnabled) {
-                try {
-                    val detector = com.xiaozhi.android.audio.SpeechEndDetector(getApplication())
-                    detector.onSpeechEnd = { samples, durationMs ->
-                        onLocalSpeechEnd(samples, durationMs)
-                    }
-                    // 帧级续说信号（v2.3.9.1）：弹性宽限期内 VAD 重新检出人声 →
-                    // 撤销在途收尾，句中停顿不切断（详见 [onLocalSpeechResumed]）
-                    detector.onSpeechStart = {
-                        onLocalSpeechResumed()
-                    }
-                    if (detector.start()) {
-                        speechEndDetector = detector
-                        addLog("✅ 本地VAD已启用：说完话将自动停止识别")
-                    } else {
-                        addLog("⚠️ 本地VAD模型加载失败，使用服务端停止判定")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "VAD 初始化失败: ${e.message}")
-                    addLog("⚠️ 本地VAD初始化失败：${e.message}")
-                }
+                buildSpeechEndDetector()
             }
 
             // 人物识别（声纹）已彻底移除，不再加载 speaker_model.onnx，
@@ -1335,6 +1382,75 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val removed = com.xiaozhi.android.audio.LegacySpeakerDataCleaner
                     .purgeLegacySpeakerProfiles(getApplication<android.app.Application>().filesDir)
                 if (removed > 0) Log.i(TAG, "已清理历史版本遗留声纹档案 $removed 个文件")
+            }
+        }
+    }
+
+    /**
+     * 创建并启动本地 VAD 检测器（IO 线程调用；初始化与 VAD 故障重建共用）。
+     * v2.3.11：新增 [SpeechEndDetector.onVadWorkerFatal] 接线——工作线程推理
+     * 连续异常自愈失败时上报，本端兜底收尾当前聆听会话并重建整个检测器，
+     * 确保故障不静默、后续会话不失去本地 VAD（否则每轮都退化到 60s 看门狗）。
+     */
+    private fun buildSpeechEndDetector() {
+        try {
+            val detector = com.xiaozhi.android.audio.SpeechEndDetector(getApplication())
+            detector.onSpeechEnd = { samples, durationMs ->
+                onLocalSpeechEnd(samples, durationMs)
+            }
+            // 帧级续说信号（v2.3.9.1）：弹性宽限期内 VAD 重新检出人声 →
+            // 撤销在途收尾，句中停顿不切断（详见 [onLocalSpeechResumed]）
+            detector.onSpeechStart = {
+                onLocalSpeechResumed()
+            }
+            // VAD 工作线程致命故障上报（v2.3.11）：自愈重建连续失败，检测器已不可用。
+            // 回调来自 VAD 工作线程 → 切主线程处理状态与 UI
+            detector.onVadWorkerFatal = { reason ->
+                onVadWorkerFatal(reason)
+            }
+            if (detector.start()) {
+                speechEndDetector = detector
+                addLog("✅ 本地VAD已启用：说完话将自动停止识别")
+            } else {
+                addLog("⚠️ 本地VAD模型加载失败，使用服务端停止判定")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "VAD 初始化失败: ${e.message}")
+            addLog("⚠️ 本地VAD初始化失败：${e.message}")
+        }
+    }
+
+    /**
+     * VAD 工作线程致命故障处理（v2.3.11，主线程）：
+     *  1. 当前处于 LISTENING → 立即兜底强制收尾（本会话端点感知已失效，
+     *     不收尾 = 聆听态悬挂到 60s 看门狗才收敛，用户等待体验极差）；
+     *  2. 重建整个检测器（IO 线程）：旧实例 VAD 已判定不可恢复，只换实例
+     *     才能恢复后续会话的本地端点能力；重建失败则保留旧引用为 null，
+     *     退化为服务端判定 + 会话级看门狗兜底（不变量仍成立）。
+     * 注意：旧实例 start 前已 stop（释放线程与 native 模型，防泄漏）。
+     */
+    private fun onVadWorkerFatal(reason: String) {
+        viewModelScope.launch(Dispatchers.Main) {
+            addLog("⚠️ 本地VAD推理异常（$reason），正在自动重建...")
+            val old = speechEndDetector
+            speechEndDetector = null // 先摘除：避免收尾路径再依赖已瘫痪的实例
+            Log.w(TAG, "VAD worker fatal($reason)，重建检测器")
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    old?.stop()
+                } catch (e: Exception) {
+                    Log.w(TAG, "旧 VAD 实例停止异常: ${e.message}")
+                }
+                viewModelScope.launch(Dispatchers.Main) {
+                    if (vadAutoStopEnabled) {
+                        buildSpeechEndDetector()
+                    }
+                    // 重建后若仍在聆听（尚未被看门狗收尾），立即兜底收尾本会话：
+                    // 端点感知在重建期间仍是空窗，收尾交给服务端已收到的音频出结果
+                    if (_deviceState.value == DeviceState.LISTENING) {
+                        forceFinalizeListeningSession("VAD_FATAL")
+                    }
+                }
             }
         }
     }
@@ -1439,23 +1555,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * → 帧级续说撤销了正常收尾 → 若用户此后不再说话，世代不再前进、收尾队列
      * 已空 → 聆听态永久挂起（keepalive 维持连接，连 1005 空闲断链都不触发）。
      *
-     * 防线设计（世代键控 + 到期先查最后说话时刻，双层过滤）：
+     * 防线设计（世代键控 + 链上限 + 到期先查最后说话时刻，三层过滤）：
      *  1. 延迟 = VAD 静音线 1.2s + 当前宽限：若宽限内续说是真语音（≥0.4s），
      *     新段会在「其结束后 1.2s」成段并接管正常收尾 → 尾扫到期世代核对失败，
      *     自动作废（不与正常路径抢跑）；
-     *  2. 到期时核查 [SpeechEndDetector.msSinceLastVoiceMs]（检测器帧级维护，
+     *  2. 链上限（v2.3.11 修复「恒顺延无上限」）：POSTPONE 的顺延条件是「距最后
+     *     检出人声 <1s」，持续人声型噪音（电视/音乐）会让该条件永远成立——旧实现
+     *     无限顺延、聆听态永久挂起。现记录尾扫链起点，顺延透传不清零，总时长
+     *     达 [EndpointGraceCoordinator.TAIL_SCAN_MAX_CHAIN_MS] 即强制收尾；
+     *  3. 到期时核查 [SpeechEndDetector.msSinceLastVoiceMs]（检测器帧级维护，
      *     说话中持续刷新）：距最后说话不足 1s = 还在说话/刚开口 → 顺延重挂，
      *     连续说话一路顺延直到真正静音（不伤连续语流）；
-     *  3. 世代未变 + 已静音超 1s → 兜底收尾（与干净收尾同规则下调宽限）。
+     *  4. 世代未变 + 已静音超 1s → 兜底收尾（与干净收尾同规则下调宽限）。
      * 任何收尾都会被 [stopListening]/[reset]/打断路径的 cancel+reset 双保险清理。
+     *
+     * @param claimedGeneration 被撤销收尾的世代号
+     * @param chainStartElapsed 尾扫链起点（elapsedRealtime）；默认 now = 新链首挂
      */
-    private fun scheduleEndpointTailScan(claimedGeneration: Long) {
+    private fun scheduleEndpointTailScan(
+        claimedGeneration: Long,
+        chainStartElapsed: Long = SystemClock.elapsedRealtime(),
+    ) {
         pendingEndpointJob = viewModelScope.launch(Dispatchers.Main) {
             kotlinx.coroutines.delay(endpointCoordinator.tailScanDelayMs())
             // 先核对聆听状态：会话已结束（手动停止/断连）则不碰协调器状态
             if (_deviceState.value != DeviceState.LISTENING) return@launch
             val voiceAgeMs = speechEndDetector?.msSinceLastVoiceMs() ?: Long.MAX_VALUE
-            when (endpointCoordinator.onTailScanDue(claimedGeneration, voiceAgeMs)) {
+            val chainElapsed = SystemClock.elapsedRealtime() - chainStartElapsed
+            when (endpointCoordinator.onTailScanDue(claimedGeneration, voiceAgeMs, chainElapsed)) {
                 EndpointGraceCoordinator.TailScanDecision.FINALIZE -> {
                     // 兜底收尾：确实说完了。与正常收尾同规则记录时刻并通知服务端
                     lastEndpointFinalizeElapsed = SystemClock.elapsedRealtime()
@@ -1466,9 +1593,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     armResultWaitWatchdog()
                     addLog("🛑 检测到你说完了，等待识别结果...")
                 }
+                EndpointGraceCoordinator.TailScanDecision.FORCE_FINALIZE -> {
+                    // 链上限强制收尾（v2.3.11）：持续噪音使「还在说话」永远成立时，
+                    // 必须在有限时长内终结尾扫链——最坏代价是噪音段出一条空结果，
+                    // 换取聆听态绝不永久挂起（见协调器 TAIL_SCAN_MAX_CHAIN_MS 注释）
+                    Log.w(TAG, "尾扫链达上限强制收尾：gen=$claimedGeneration 链长=${chainElapsed}ms")
+                    dumpMicDiagnostics("TAIL_SCAN_FORCE_FINALIZE")
+                    stopListening()
+                    _deviceState.value = DeviceState.WAITING_RESULT
+                    armResultWaitWatchdog()
+                    addLog("🛑 环境音持续，已按兜底规则结束聆听...")
+                }
                 EndpointGraceCoordinator.TailScanDecision.POSTPONE ->
-                    // 还在说话/刚开口：顺延重挂（同一世代键控，静音后再收）
-                    scheduleEndpointTailScan(claimedGeneration)
+                    // 还在说话/刚开口：顺延重挂（同一世代键控 + 同一链起点，静音或达上限后再收）
+                    scheduleEndpointTailScan(claimedGeneration, chainStartElapsed)
                 EndpointGraceCoordinator.TailScanDecision.VOID ->
                     // 宽限内续说真的又成段（正常收尾已接管）或会话已重置：作废
                     Unit
@@ -1510,6 +1648,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!audioRecorder.isRunning()) {
             audioRecorder.start()
         }
+        // 会话级兜底看门狗（v2.3.11）：打断重听路径同样挂载（漏挂=该路径无兜底）
+        armListeningSessionWatchdog()
         addLog("打断说话，重新聆听...")
     }
 
