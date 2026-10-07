@@ -1421,34 +1421,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * VAD 工作线程致命故障处理（v2.3.11，主线程）：
-     *  1. 当前处于 LISTENING → 立即兜底强制收尾（本会话端点感知已失效，
+     * VAD 工作线程致命故障处理（v2.3.11，回调来自 VAD 工作线程 → 切主线程）：
+     *  1. 先摘除瘫痪实例（主线程，杜绝后续路径再使用）；
+     *  2. 当前处于 LISTENING → 立即兜底强制收尾（本会话端点感知已失效，
      *     不收尾 = 聆听态悬挂到 60s 看门狗才收敛，用户等待体验极差）；
-     *  2. 重建整个检测器（IO 线程）：旧实例 VAD 已判定不可恢复，只换实例
-     *     才能恢复后续会话的本地端点能力；重建失败则保留旧引用为 null，
-     *     退化为服务端判定 + 会话级看门狗兜底（不变量仍成立）。
-     * 注意：旧实例 start 前已 stop（释放线程与 native 模型，防泄漏）。
+     *  3. 重建整个检测器——旧实例释放与模型加载（约 1s）全部在 IO 线程执行
+     *     （评审 🟡-2：主线程加载模型会卡 UI；[SpeechEndDetector.start] 的
+     *     KDoc 亦约定必须在后台线程调用）；
+     *  4. 重建完成回主线程补 arm：覆盖「结果看门狗 6s 恢复聆听时新实例尚未
+     *     就绪（_deviceState.collect 读到 null 未 arm）」的竞态——只要恢复的
+     *     会话仍在聆听，新实例就绪后立即接管端点感知，该会话不失去本地 VAD。
      */
     private fun onVadWorkerFatal(reason: String) {
         viewModelScope.launch(Dispatchers.Main) {
             addLog("⚠️ 本地VAD推理异常（$reason），正在自动重建...")
-            val old = speechEndDetector
-            speechEndDetector = null // 先摘除：避免收尾路径再依赖已瘫痪的实例
             Log.w(TAG, "VAD worker fatal($reason)，重建检测器")
+            val old = speechEndDetector
+            speechEndDetector = null
+            // 立即兜底收尾本会话：服务端按已上传音频出结果，空则结果看门狗 6s 恢复聆听
+            if (_deviceState.value == DeviceState.LISTENING) {
+                forceFinalizeListeningSession("VAD_FATAL")
+            }
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     old?.stop()
                 } catch (e: Exception) {
                     Log.w(TAG, "旧 VAD 实例停止异常: ${e.message}")
                 }
+                if (vadAutoStopEnabled) {
+                    buildSpeechEndDetector() // 模型加载 ~1s，仅在 IO 线程执行
+                }
                 viewModelScope.launch(Dispatchers.Main) {
-                    if (vadAutoStopEnabled) {
-                        buildSpeechEndDetector()
-                    }
-                    // 重建后若仍在聆听（尚未被看门狗收尾），立即兜底收尾本会话：
-                    // 端点感知在重建期间仍是空窗，收尾交给服务端已收到的音频出结果
+                    // 竞态补 arm（见方法 KDoc 第 4 点）：重复 arm 只重置一次静默期，无副作用
                     if (_deviceState.value == DeviceState.LISTENING) {
-                        forceFinalizeListeningSession("VAD_FATAL")
+                        speechEndDetector?.arm()
                     }
                 }
             }

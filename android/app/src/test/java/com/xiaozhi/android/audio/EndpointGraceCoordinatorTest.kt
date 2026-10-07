@@ -83,7 +83,7 @@ class EndpointGraceCoordinatorTest {
         val plan = c.onSegmentArrive()
         assertEquals(plan.generation, c.onSpeechResumedWithinGrace()) // 噪音触发帧级撤销
         // 尾扫到期：世代未变 + 距最后说话（噪音结束）已超 1s 静音 → FINALIZE
-        val decision = c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 100)
+        val decision = c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 100, 0L)
         assertEquals(EndpointGraceCoordinator.TailScanDecision.FINALIZE, decision)
         // 兜底收尾 = 干净收尾：宽限同规则下调（首轮 400 已被上调封顶，此处 -100）
         assertEquals(300L, c.graceMs)
@@ -95,14 +95,14 @@ class EndpointGraceCoordinatorTest {
         val plan = c.onSegmentArrive()
         c.onSpeechResumedWithinGrace() // 撤销 + 补挂尾扫
         // 尾扫到期时用户仍在连续说话（距最后说话 300ms < 1s 门槛）
-        val decision = c.onTailScanDue(plan.generation, 300L)
+        val decision = c.onTailScanDue(plan.generation, 300L, 0L)
         assertEquals(EndpointGraceCoordinator.TailScanDecision.POSTPONE, decision)
         // 顺延重挂不收尾：宽限不得下调（保留学习值），世代不变、pending 保持已清
         assertEquals(INITIAL_GRACE_MS, c.graceMs)
         // 顺延后再到期：真正静音超 1s → 收尾
         assertEquals(
             EndpointGraceCoordinator.TailScanDecision.FINALIZE,
-            c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 1)
+            c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 1, 0L)
         )
     }
 
@@ -117,7 +117,7 @@ class EndpointGraceCoordinatorTest {
         // 旧的尾扫到期：世代核对失败 → VOID，不得与正常收尾抢跑
         assertEquals(
             EndpointGraceCoordinator.TailScanDecision.VOID,
-            c.onTailScanDue(p1.generation, VOICE_QUIET_MS + 500)
+            c.onTailScanDue(p1.generation, VOICE_QUIET_MS + 500, 0L)
         )
         // 正常路径不受影响：新世代宽限期满 → 干净收尾
         assertTrue(c.onFinalizeDue(p2.generation))
@@ -132,7 +132,7 @@ class EndpointGraceCoordinatorTest {
         assertEquals(
             "重置后旧世代尾扫必须作废",
             EndpointGraceCoordinator.TailScanDecision.VOID,
-            c.onTailScanDue(p1.generation, Long.MAX_VALUE)
+            c.onTailScanDue(p1.generation, Long.MAX_VALUE, 0L)
         )
     }
 
@@ -236,7 +236,7 @@ class EndpointGraceCoordinatorTest {
         val next = c.onSegmentArrive()
         assertEquals(
             EndpointGraceCoordinator.TailScanDecision.VOID,
-            c.onTailScanDue(plan.generation, VOICE_QUIET_MS)
+            c.onTailScanDue(plan.generation, VOICE_QUIET_MS, 0L)
         )
         // 用户说完 → 正常干净收尾，收敛值保持下限（伸缩有界）
         assertTrue(c.onFinalizeDue(next.generation))

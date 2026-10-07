@@ -168,12 +168,15 @@ class EndpointGraceCoordinator(private val grace: EndpointGracePolicy) {
      * @param generation 挂载尾扫时帧级续说所属的世代号（[onSpeechResumedWithinGrace] 返回值）
      * @param msSinceLastVoiceMs 距最后一次检出人声的毫秒数（检测器无观测时传 Long.MAX_VALUE）
      * @param chainElapsedMs 尾扫链自本世代首次挂载起已运行的总毫秒数
-     *        （调用方记录首次挂载时刻，POSTPONE 重挂时透传不清零）
+     *        （调用方记录首次挂载时刻，POSTPONE 重挂时透传不清零）。
+     *        【评审 🟡-3 防回归】无默认值：默认 0 等价于「永达不到上限」= 静默
+     *        退回无上限顺延的旧缺陷——强制每个调用点显式记录并透传链起点，
+     *        未来新增调用漏传时在编译期报错而非运行期静默悬挂。
      */
     fun onTailScanDue(
         generation: Long,
         msSinceLastVoiceMs: Long,
-        chainElapsedMs: Long = 0L,
+        chainElapsedMs: Long,
     ): TailScanDecision {
         if (this.generation.get() != generation) return TailScanDecision.VOID
         if (chainElapsedMs >= TAIL_SCAN_MAX_CHAIN_MS) return TailScanDecision.FORCE_FINALIZE

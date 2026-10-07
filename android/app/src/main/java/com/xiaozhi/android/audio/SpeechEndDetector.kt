@@ -81,6 +81,15 @@ class SpeechEndDetector(private val context: Context) {
      *  治理效果不回退、尾延迟较 v2.3.9 压缩 0.25s（收敛后） */
     var silenceDuration = 1.2f
 
+    /**
+     * VAD 实例的跨线程同步锁（评审 🟡-1）：
+     * worker 线程（推理/自愈重建/降级置空）与调用方线程（[stop] 释放）并发访问
+     * [vad]——release 与 acceptWaveform 并发是 native 层 use-after-free 崩溃。
+     * 全部 vad 读写经本锁串行化：推理持锁约 1~5ms，stop() 最坏等待一窗
+     * （自愈退避期最多 ~50ms），完全可接受。
+     */
+    private val vadLock = Any()
+
     private var vad: Vad? = null
     private val pendingFrames = ConcurrentLinkedQueue<ShortArray>()
     private val sampleBuffer = ArrayList<Float>(WINDOW_SIZE * 4)
@@ -165,27 +174,31 @@ class SpeechEndDetector(private val context: Context) {
 
     /**
      * 加载/重建 VAD 模型实例（v2.3.11 自愈治理：工作线程异常后原地重建复用）。
-     * @return true = vad 已就绪；false = 加载失败（vad 保持 null，调用方进入退避）
+     * vad 写操作经 [vadLock] 串行化（评审 🟡-1）；synchronized 可重入，
+     * 自愈路径（已在锁内）调用安全。
+     * @return true = vad 已就绪；false = 加载失败（vad 保持 null，调用方按 F1 语义推进计数）
      */
-    private fun loadVad(): Boolean = try {
-        val config = VadModelConfig(
-            sileroVadModelConfig = SileroVadModelConfig(
-                model = "models/silero_vad.onnx",
-                threshold = threshold,
-                // v2.3.9：最短语音时长 0.25s → 0.40s——环境噪音瞬态/短促碰撞
-                // 很难维持 400ms 以上的高置信度，不成段就不会触发端点回调
-                minSpeechDuration = 0.40f,
-                minSilenceDuration = silenceDuration,
-            ),
-            sampleRate = SAMPLE_RATE,
-            numThreads = 1,
-        )
-        vad = Vad(context.assets, config)
-        true
-    } catch (e: Exception) {
-        Log.e(TAG, "VAD 模型加载失败: ${e.message}")
-        vad = null
-        false
+    private fun loadVad(): Boolean = synchronized(vadLock) {
+        try {
+            val config = VadModelConfig(
+                sileroVadModelConfig = SileroVadModelConfig(
+                    model = "models/silero_vad.onnx",
+                    threshold = threshold,
+                    // v2.3.9：最短语音时长 0.25s → 0.40s——环境噪音瞬态/短促碰撞
+                    // 很难维持 400ms 以上的高置信度，不成段就不会触发端点回调
+                    minSpeechDuration = 0.40f,
+                    minSilenceDuration = silenceDuration,
+                ),
+                sampleRate = SAMPLE_RATE,
+                numThreads = 1,
+            )
+            vad = Vad(context.assets, config)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "VAD 模型加载失败: ${e.message}")
+            vad = null
+            false
+        }
     }
 
     fun stop() {
@@ -193,11 +206,15 @@ class SpeechEndDetector(private val context: Context) {
         active = false
         worker?.interrupt()
         worker = null
-        try {
-            vad?.release()
-        } catch (_: Exception) {
+        // release 与 worker 推理互斥（评审 🟡-1）：锁内等待当前窗处理完再释放，
+        // 杜绝 native use-after-free；worker 若在自愈退避 sleep，最坏多等 ~50ms
+        synchronized(vadLock) {
+            try {
+                vad?.release()
+            } catch (_: Exception) {
+            }
+            vad = null
         }
-        vad = null
         pendingFrames.clear()
         vadErrorStreak = 0
         // 重启语义：下次 start 允许重新走「有界自愈 → 上报」流程
@@ -282,84 +299,89 @@ class SpeechEndDetector(private val context: Context) {
     /** 单轮处理：拉帧 → 攒窗 → 推理 → 跳变检测 → 取段。任何异常抛给 [processLoop] 统一处置 */
     private fun processOnce() {
         val frame = pendingFrames.poll() ?: run { safeSleep(10); return }
-        val localVad = vad ?: run {
-            // 无可用 VAD（未加载完/重建失败退避中/已 FATAL 降级）：丢帧防堆积，退避等待自愈
-            safeSleep(50)
-            return
-        }
-
-        // Short 转 Float 并攒到 VAD 窗口大小
-        synchronized(sampleBuffer) {
-            for (s in frame) {
-                sampleBuffer.add(s / 32768f)
+        // vad 引用获取与全部 VAD 交互同持 [vadLock]（评审 🟡-1）：保证本窗使用的
+        // 实例在整窗期间不可能被 [stop] release；vad=null（重建失败退避中/FATAL
+        // 降级）时丢帧防堆积、锁内短退避等待自愈——注意计数推进只发生在
+        // [handleVadError] 内（含 F1 的重建失败推进），本分支不得重复计数
+        synchronized(vadLock) {
+            val localVad = vad ?: run {
+                safeSleep(50)
+                return
             }
-            while (sampleBuffer.size >= WINDOW_SIZE) {
-                val window = FloatArray(WINDOW_SIZE) { sampleBuffer[it] }
-                sampleBuffer.subList(0, WINDOW_SIZE).clear()
-                try {
-                    localVad.acceptWaveform(window)
-                    // 真实推理成功才清零连续异常计数（重建成功不算——
-                    // 防「重建成功但一调就崩」的死循环重建，保证有界收敛）
-                    if (vadErrorStreak > 0) {
-                        Log.i(TAG, "VAD 恢复正常（此前连续异常 ${vadErrorStreak} 次）")
-                        vadErrorStreak = 0
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "VAD 推理异常: ${e.message}")
-                    handleVadError("acceptWaveform")
+
+            // Short 转 Float 并攒到 VAD 窗口大小
+            synchronized(sampleBuffer) {
+                for (s in frame) {
+                    sampleBuffer.add(s / 32768f)
                 }
-            }
-        }
-
-        // 帧级「开始说话」跳变检测（v2.3.9.1 端点自适应配套）：
-        // isSpeechDetected 反映 silero 内部实时语音状态（与成段判定同源、同阈值），
-        // 静音→说话 跳变以 ~32ms/窗 的粒度触发 [onSpeechStart]——
-        // 弹性宽限期内用户续说靠它在 300-400ms 内被感知（段级回调赶不上宽限窗）
-        val inSpeech = try {
-            localVad.isSpeechDetected()
-        } catch (e: Exception) {
-            Log.w(TAG, "VAD 状态读取异常: ${e.message}")
-            handleVadError("isSpeechDetected")
-            wasInSpeech // 异常时维持原状态，避免误发跳变
-        }
-        if (inSpeech && !wasInSpeech) {
-            onSpeechStart?.invoke()
-        }
-        wasInSpeech = inSpeech
-        // 尾扫兜底配套（评审 🔴-1）：说话中的每个窗口刷新「最后说话时刻」，
-        // 供宽限撤销后的尾扫计时到期核查「距今是否已静音超 1s」——
-        // 连续说话时该时间戳持续前移，尾扫恒顺延，直到真正静音才允许收尾
-        if (inSpeech) {
-            lastVoiceActiveAtMs = System.currentTimeMillis()
-        }
-
-        // 取出已完成的语音段
-        try {
-            while (!localVad.empty()) {
-                val seg = localVad.front()
-                localVad.pop()
-                val samples = seg.samples
-                val durationMs = samples.size * 1000L / SAMPLE_RATE
-                // 段长判定下沉 [SpeechSegmentPolicy]（v2.3.10 短命令/长独白悬挂修复）：
-                // ENDPOINT = 正常端点；FORCE_ENDPOINT = 超长段强制收尾；
-                // DROP = 过短（口头禅/瞬态）丢弃，维持"不因嗯啊误停"的既有治理。
-                when (SpeechSegmentPolicy.decide(durationMs)) {
-                    SpeechSegmentPolicy.Decision.ENDPOINT -> {
-                        Log.d(TAG, "检测到语音段: ${durationMs}ms")
-                        onSpeechEnd?.invoke(samples, durationMs)
-                    }
-                    SpeechSegmentPolicy.Decision.FORCE_ENDPOINT -> {
-                        Log.w(TAG, "长语音段(${durationMs}ms)超上限，强制触发端点收尾")
-                        onSpeechEnd?.invoke(samples, durationMs)
-                    }
-                    SpeechSegmentPolicy.Decision.DROP -> {
-                        Log.d(TAG, "语音段(${durationMs}ms)短于端点下限，丢弃不收尾")
+                while (sampleBuffer.size >= WINDOW_SIZE) {
+                    val window = FloatArray(WINDOW_SIZE) { sampleBuffer[it] }
+                    sampleBuffer.subList(0, WINDOW_SIZE).clear()
+                    try {
+                        localVad.acceptWaveform(window)
+                        // 真实推理成功才清零连续异常计数（重建成功不算——
+                        // 防「重建成功但一调就崩」的死循环重建，保证有界收敛）
+                        if (vadErrorStreak > 0) {
+                            Log.i(TAG, "VAD 恢复正常（此前连续异常 ${vadErrorStreak} 次）")
+                            vadErrorStreak = 0
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "VAD 推理异常: ${e.message}")
+                        handleVadError("acceptWaveform")
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "取语音段异常: ${e.message}")
-            handleVadError("takeSegment")
+
+            // 帧级「开始说话」跳变检测（v2.3.9.1 端点自适应配套）：
+            // isSpeechDetected 反映 silero 内部实时语音状态（与成段判定同源、同阈值），
+            // 静音→说话 跳变以 ~32ms/窗 的粒度触发 [onSpeechStart]——
+            // 弹性宽限期内用户续说靠它在 300-400ms 内被感知（段级回调赶不上宽限窗）
+            val inSpeech = try {
+                localVad.isSpeechDetected()
+            } catch (e: Exception) {
+                Log.w(TAG, "VAD 状态读取异常: ${e.message}")
+                handleVadError("isSpeechDetected")
+                wasInSpeech // 异常时维持原状态，避免误发跳变
+            }
+            if (inSpeech && !wasInSpeech) {
+                onSpeechStart?.invoke()
+            }
+            wasInSpeech = inSpeech
+            // 尾扫兜底配套（评审 🔴-1）：说话中的每个窗口刷新「最后说话时刻」，
+            // 供宽限撤销后的尾扫计时到期核查「距今是否已静音超 1s」——
+            // 连续说话时该时间戳持续前移，尾扫恒顺延，直到真正静音才允许收尾
+            if (inSpeech) {
+                lastVoiceActiveAtMs = System.currentTimeMillis()
+            }
+
+            // 取出已完成的语音段
+            try {
+                while (!localVad.empty()) {
+                    val seg = localVad.front()
+                    localVad.pop()
+                    val samples = seg.samples
+                    val durationMs = samples.size * 1000L / SAMPLE_RATE
+                    // 段长判定下沉 [SpeechSegmentPolicy]（v2.3.10 短命令/长独白悬挂修复）：
+                    // ENDPOINT = 正常端点；FORCE_ENDPOINT = 超长段强制收尾；
+                    // DROP = 过短（口头禅/瞬态）丢弃，维持"不因嗯啊误停"的既有治理。
+                    when (SpeechSegmentPolicy.decide(durationMs)) {
+                        SpeechSegmentPolicy.Decision.ENDPOINT -> {
+                            Log.d(TAG, "检测到语音段: ${durationMs}ms")
+                            onSpeechEnd?.invoke(samples, durationMs)
+                        }
+                        SpeechSegmentPolicy.Decision.FORCE_ENDPOINT -> {
+                            Log.w(TAG, "长语音段(${durationMs}ms)超上限，强制触发端点收尾")
+                            onSpeechEnd?.invoke(samples, durationMs)
+                        }
+                        SpeechSegmentPolicy.Decision.DROP -> {
+                            Log.d(TAG, "语音段(${durationMs}ms)短于端点下限，丢弃不收尾")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "取语音段异常: ${e.message}")
+                handleVadError("takeSegment")
+            }
         }
     }
 
@@ -369,6 +391,13 @@ class SpeechEndDetector(private val context: Context) {
      * （单次 native 瞬态异常重建即恢复）；超过上限判定持续性故障，上报 FATAL
      * 并置 vad=null 进入降级（processOnce 丢帧退避，线程存活、内存有界），
      * 由上层（MainViewModel）重建整个检测器并兜底收尾当前会话。
+     *
+     * F1（评审 🔴 必修）：**重建失败本身也是一次异常，必须沿决策链继续推进**——
+     * 旧写法 loadVad 失败后只退避等待下一窗再触发异常，但 vad=null 时下一窗走
+     * 降级分支（不再有任何 VAD 调用），异常计数就此冻结在 ≤5、FATAL 永不上抛、
+     * 上层整机重建永不发生 → 一次模型加载失败即令本地端点终身静默退化。
+     * 现改为：失败立即 +1 重新决策，直至 FATAL 终止（最多 5 次重建尝试 + 1 次上报，
+     * 每次失败退避 200ms，有界收敛）。
      */
     private fun handleVadError(where: String) {
         vadErrorStreak++
@@ -380,7 +409,16 @@ class SpeechEndDetector(private val context: Context) {
                 } catch (_: Exception) {
                 }
                 vad = null
-                if (!loadVad()) safeSleep(200) // 重建失败：退避后下轮再试（计数继续累积）
+                while (!loadVad()) {
+                    vadErrorStreak++
+                    if (VadSelfHealPolicy.decide(vadErrorStreak) == VadSelfHealPolicy.Decision.FATAL) {
+                        Log.e(TAG, "VAD 重建连续失败，计数推进至 $vadErrorStreak，升级 FATAL")
+                        reportFatalIfFirst("vad_rebuild_exhausted:$where")
+                        vad = null
+                        return // 降级：丢帧退避，等待上层整体重建
+                    }
+                    safeSleep(200) // 重建失败退避后再试（锁内短 sleep，最坏阻塞 stop 数百 ms，可接受）
+                }
             }
             VadSelfHealPolicy.Decision.FATAL -> {
                 reportFatalIfFirst("vad_broken:$where")

@@ -1,6 +1,7 @@
 package com.xiaozhi.android.audio
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -63,5 +64,35 @@ class VadSelfHealPolicyTest {
     fun `streak为0或负数视为非法 - 归入FATAL（不应静默放行）`() {
         assertEquals(VadSelfHealPolicy.Decision.FATAL, VadSelfHealPolicy.decide(0))
         assertEquals(VadSelfHealPolicy.Decision.FATAL, VadSelfHealPolicy.decide(-3))
+    }
+
+    // ---------- 4. 重建失败推进序列（评审 🔴-F1 语义锁定） ----------
+
+    /**
+     * F1 语义：重建失败【本身也是异常】，必须沿决策链继续推进直至 FATAL 终止。
+     * 旧实现缺陷（架构师评审 F1 必修项）：detector 内重建失败后 vad=null，
+     * 下一窗走降级分支不再有任何 VAD 调用 → 异常计数冻结在 ≤5、FATAL 永不上抛、
+     * 上层整机重建永不发生 → 一次模型加载失败即令本地端点终身静默退化。
+     * 本用例锁定决策链的组合语义：每次失败 +1 重新决策，5 次 REBUILD 后第 6 次
+     * 决策必须终止于 FATAL（与 SpeechEndDetector.handleVadError 的 while 推进
+     * 实现互为镜像，防止未来改动破坏「失败必推进」约定）。
+     */
+    @Test
+    fun `重建连续失败沿决策链推进 - 5次REBUILD后必须FATAL终止 - 不允许冻结`() {
+        var streak = 0
+        val decisions = mutableListOf<VadSelfHealPolicy.Decision>()
+        // 有界保护：最多推进 100 步（真实路径 6 步内必终止，上界只为防测试死循环）
+        while (decisions.size < 100) {
+            streak++
+            val decision = VadSelfHealPolicy.decide(streak)
+            decisions.add(decision)
+            if (decision == VadSelfHealPolicy.Decision.FATAL) break
+        }
+        assertEquals("重建失败序列应恰好在第 6 次决策终止于 FATAL", 6, decisions.size)
+        assertTrue(
+            "前 5 次决策必须全部为 REBUILD",
+            decisions.take(5).all { it == VadSelfHealPolicy.Decision.REBUILD },
+        )
+        assertEquals(VadSelfHealPolicy.Decision.FATAL, decisions.last())
     }
 }
