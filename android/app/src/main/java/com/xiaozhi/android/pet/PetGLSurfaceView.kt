@@ -8,17 +8,15 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * 3D 桌面宠物渲染视图。
+ * 桌面宠物渲染视图（v2.3.13 起为"启动器头像面片"渲染：单个纹理化 quad + 三层状态粒子）。
  *
- * 渲染方案与 1.9.19（显示正常版本）完全一致，从其 smali 精确复刻：
- *  - 模型：assets/pet_model.bin（含原生 位置/法线/UV，不重算不翻转）
- *  - 纹理：assets/pet_texture.png（原始 bitmap，不做 alpha 预处理）
- *  - 投影：gluPerspective(45, ratio, 0.1, 100)
- *  - 平移：glTranslatef(0, 0, -3.0)
- *  - 光照：不启用（drawModel 用 GL_REPLACE 让纹理原样显示）
- *  - 混合：glEnable(GL_BLEND) + glBlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA) 实现透明背景
- *
- * 状态动画（IDLE 自转 / LISTENING 脉动 / SPEAKING 摇摆 / THINKING 倾斜）为 APP 原有功能，保留。
+ * v2.3.13 头像化改造（2026-10）：桌面宠物形象统一更换为 APP 启动器图标（蓝色机器人头像）。
+ *  - 旧方案：assets/pet_model.bin 3D 网格 + assets/pet_texture.png UV 图集（白色机器人玩具）
+ *  - 新方案：代码内置正方形面片（quad），纹理直接取 mipmap/ic_launcher_playstore（512px 启动器图标），
+ *    UV 裁剪到图标内容区（含机器人的圆角方块），透明背景仍由 GL_BLEND 实现干净抠图。
+ *  - 保留：45° 透视 / 摄像机 -3.0 / GL_REPLACE 纹理环境 / 三层粒子状态反馈，全部不变。
+ *  - 动画适配：面片是平面，IDLE 的整周 Y 轴自转会在 90° 时侧对视线"消失"，
+ *    故改为 ±16° 缓摆 + 微幅 Z 轴呼吸摆动；LISTENING 脉动 / SPEAKING 摇摆 / THINKING 倾斜语义不变。
  */
 class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
@@ -30,13 +28,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
         setZOrderOnTop(true)
 
-        val model = PetModel()
-        val loaded = model.loadFromAssets(context, "pet_model.bin")
-        if (!loaded) {
-            Log.e(TAG, "Failed to load pet_model.bin")
-        }
-
-        petRenderer = PetRenderer(context, model)
+        petRenderer = PetRenderer(context)
         setRenderer(petRenderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
@@ -45,13 +37,46 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         petRenderer.state = state
     }
 
-    class PetRenderer(private val context: Context, private val model: PetModel) : GLSurfaceView.Renderer {
+    class PetRenderer(private val context: Context) : GLSurfaceView.Renderer {
         var state: Int = 0
 
-        private var rotation = 0f
         private var swayAngle = 0f
         private var timeMs: Long = 0L
         private var textureId: Int = 0
+
+        // === 头像面片几何：单位半边长 1.02（视锥半高 1.2426，约占窗口高度 82%，与旧 3D 模型占比相当） ===
+        private val quadHalf = 1.02f
+        // 6 顶点（x,y,z）两个独立三角形（drawArrays(GL_TRIANGLES,0,6) 恰好消费 6 个顶点）：
+        // 三角1 左下/右下/左上，三角2 左上/右下/右上（均为 CCW，与 GL 惯例一致）。
+        // 注意：不可用 4 顶点 + drawArrays(6)（越界读，第二个三角形未定义）；
+        // 若想省 2 个顶点须改 drawElements + 索引缓冲 [0,1,2,2,1,3]。
+        private val quadVertices = floatArrayOf(
+            -quadHalf, -quadHalf, 0f,   quadHalf, -quadHalf, 0f,   -quadHalf,  quadHalf, 0f,
+            -quadHalf,  quadHalf, 0f,   quadHalf, -quadHalf, 0f,    quadHalf,  quadHalf, 0f
+        )
+        private val quadBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(quadVertices.size * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .apply { put(quadVertices); position(0) }
+
+        // 启动器图标 512px 画布中内容区（圆角方块）bbox：x[66,444] y[63,442]，像素级实测。
+        // UV 的 v 轴与 bitmap 行序相反（GL 纹理原点在左下），故 v = 1 - y/512。
+        private val U_L = 0.12891f   // 66 / 512
+        private val U_R = 0.86719f   // 444 / 512
+        private val V_T = 0.87695f   // 1 - 63/512（内容区顶）
+        private val V_B = 0.13672f   // 1 - 442/512（内容区底）
+
+        // UV 与 quadVertices 6 顶点一一对应：左下/右下/左上/左上/右下/右上
+        private val quadUVs = floatArrayOf(
+            U_L, V_B,   U_R, V_B,   U_L, V_T,
+            U_L, V_T,   U_R, V_B,   U_R, V_T
+        )
+        private val uvBuffer: java.nio.FloatBuffer = java.nio.ByteBuffer
+            .allocateDirect(quadUVs.size * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .apply { put(quadUVs); position(0) }
 
         // === 粒子系统：多层粒子（环绕层 + 上升层 + 脉冲层），在模型周边显示动态粒子作为状态反馈 ===
         // Layer 1: 环绕粒子（LISTENING 时蓝色环绕旋转）
@@ -103,15 +128,26 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
         }
 
         /**
-         * 加载 assets/pet_texture.png 作为纹理，原始 bitmap 直接上传，不做 alpha 预处理。
-         * （1.9.19 即如此，纹理本身的透明像素由 GL_BLEND 混合处理）
+         * 加载启动器图标作为宠物纹理（v2.3.13）。
+         * ic_launcher_playstore.png（512×512，xxxhdpi）是启动器图标的最高清版本，
+         * 与桌面图标完全同源，保证"悬浮窗形象 = 启动器形象"。
+         * inPremultiplied=false：上传非预乘 RGBA，配合 SRC_ALPHA 混合得到正确的圆角透明边缘。
          */
         private fun loadTexture(gl: GL10) {
             try {
-                val bitmap = context.assets.open("pet_texture.png").use {
-                    android.graphics.BitmapFactory.decodeStream(it)
-                } ?: run {
-                    Log.e(TAG, "Failed to decode pet_texture.png")
+                val opts = android.graphics.BitmapFactory.Options().apply {
+                    inPremultiplied = false
+                    // 关键：关闭密度缩放。mipmap 资源会被 Resource 按屏幕密度缩放
+                    // （512px@xxxhdpi 在 mdpi 设备上会被压到 128px，纹理发虚），
+                    // GL 纹理需要原生 512px 全分辨率。
+                    inScaled = false
+                }
+                val bitmap = android.graphics.BitmapFactory.decodeResource(
+                    context.resources,
+                    com.xiaozhi.android.R.mipmap.ic_launcher_playstore,
+                    opts
+                ) ?: run {
+                    Log.e(TAG, "Failed to decode ic_launcher_playstore")
                     return
                 }
                 val textures = IntArray(1)
@@ -124,7 +160,7 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T, GL10.GL_CLAMP_TO_EDGE.toFloat())
                 android.opengl.GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bitmap, 0)
                 bitmap.recycle()
-                Log.i(TAG, "Texture loaded: pet_texture.png, id=$textureId")
+                Log.i(TAG, "Texture loaded: ic_launcher_playstore, id=$textureId")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load texture: ${e.message}", e)
             }
@@ -155,28 +191,31 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
             timeMs = System.currentTimeMillis()
 
-            // 状态动画（APP 原有功能，保留）
+            // 状态动画（v2.3.13 适配面片：避免整周自转让平面卡片侧对视线消失）
             when (state) {
                 STATE_LISTENING -> {
+                    // 聆听：呼吸脉动（保留原节奏）
                     val scale = 1f + 0.05f * Math.sin(timeMs * 0.005).toFloat()
                     gl.glScalef(scale, scale, scale)
                 }
                 STATE_SPEAKING -> {
+                    // 说话：Z 轴摇摆（保留原节奏）
                     swayAngle = 12f * Math.sin(timeMs * 0.008).toFloat()
                     gl.glRotatef(swayAngle, 0f, 0f, 1f)
                 }
                 STATE_THINKING -> {
+                    // 思考：右倾 + 缓慢小幅摆动（原为持续自转，面片化后改为摆动）
                     gl.glRotatef(8f, 0f, 0f, 1f)
-                    rotation += 0.5f
-                    gl.glRotatef(rotation * 0.3f, 0f, 1f, 0f)
+                    gl.glRotatef(10f * Math.sin(timeMs * 0.002).toFloat(), 0f, 1f, 0f)
                 }
                 else -> {
-                    rotation += 0.8f
-                    gl.glRotatef(rotation, 0f, 1f, 0f)
+                    // 待机：±16° Y 轴缓摆 + ±3° Z 轴呼吸摆，营造"悬浮活着"的感觉
+                    gl.glRotatef(16f * Math.sin(timeMs * 0.0012).toFloat(), 0f, 1f, 0f)
+                    gl.glRotatef(3f * Math.sin(timeMs * 0.0019).toFloat(), 0f, 0f, 1f)
                 }
             }
 
-            drawModel(gl)
+            drawQuad(gl)
 
             // 粒子在模型之后绘制，不修改模型本身
             if (state == STATE_LISTENING || state == STATE_SPEAKING || state == STATE_THINKING) {
@@ -184,31 +223,25 @@ class PetGLSurfaceView(context: Context) : GLSurfaceView(context) {
             }
         }
 
-        private fun drawModel(gl: GL10) {
-            val vb = model.vertexBuffer ?: return
-            val nb = model.normalBuffer ?: return
-
-            // 纹理：GL_REPLACE 让纹理颜色原样显示，关闭光照避免影响颜色（与 1.9.19 一致）
+        /**
+         * 绘制头像面片（v2.3.13）：两个三角形 + 图标纹理。
+         * 平面无需法线（无光照），纹理环境 GL_REPLACE 保持图标原色。
+         */
+        private fun drawQuad(gl: GL10) {
             if (textureId != 0) {
                 gl.glEnable(GL10.GL_TEXTURE_2D)
                 gl.glBindTexture(GL10.GL_TEXTURE_2D, textureId)
                 gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY)
-                model.textureBuffer?.let { tb ->
-                    gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, tb)
-                }
+                gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, uvBuffer)
                 gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_REPLACE.toFloat())
                 gl.glDisable(GL10.GL_LIGHTING)
             }
 
             gl.glEnableClientState(GL10.GL_VERTEX_ARRAY)
-            gl.glEnableClientState(GL10.GL_NORMAL_ARRAY)
-
-            gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vb)
-            gl.glNormalPointer(GL10.GL_FLOAT, 0, nb)
-            gl.glDrawArrays(GL10.GL_TRIANGLES, 0, model.vertexCount)
+            gl.glVertexPointer(3, GL10.GL_FLOAT, 0, quadBuffer)
+            gl.glDrawArrays(GL10.GL_TRIANGLES, 0, 6)
 
             gl.glDisableClientState(GL10.GL_VERTEX_ARRAY)
-            gl.glDisableClientState(GL10.GL_NORMAL_ARRAY)
 
             if (textureId != 0) {
                 gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY)

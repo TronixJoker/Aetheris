@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -476,9 +478,9 @@ fun EmotionDisplay(
                 ) {
                     drawStateAura(deviceState, color, breathPhase.floatValue)
                 }
-                // 机器人主体图片（身体+头部整体，应用身体摇摆和浮动）
+                // 机器人主体图片（v2.3.13 换为启动器同款蓝色机器人头像，净脸无五官，表情由下方 Canvas 动态绘制）
                 Image(
-                    painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_pet),
+                    painter = painterResource(id = com.xiaozhi.android.R.drawable.ic_robot_avatar),
                     contentDescription = "小智",
                     modifier = Modifier
                         .size(280.dp)
@@ -500,7 +502,35 @@ fun EmotionDisplay(
                             translationX = shakeOffset
                         }
                 ) {
-                    drawFaceExpression(deviceState, naturalMouthOpen, blinkAlpha, emotion, blinkScale, breathScale)
+                    // v2.3.13 头像化改造：表情坐标系映射。
+                    // 旧全身图调校的五官坐标系 → 新启动器头像的面部屏幕。
+                    // 母版 = mipmap/ic_launcher_playstore（512×512 启动器图标最高清版），
+                    // ic_robot_avatar.png（1024）即由它抹除内置五官生成（净脸，表情全动态绘制）。
+                    // 启动器图标像素实测（512 空间）：
+                    //   面屏 bbox x[137,371] y[167,318]，屏心 (0.4961, 0.4736)；
+                    //   眼心 (201.5, 232) / (307.0, 232)，眼径 ≈41px = 0.040w；
+                    //   嘴条 x[222,288] y[281,290]（宽 67px = 0.131w，高 10px = 0.0195w）。
+                    // 旧设计五官（drawFaceExpression 原坐标）：眼心 y=0.210h、半眼距 0.0686w、
+                    //   眼径 0.0267w、平静嘴 y=0.280h、嘴半宽 0.0436w、嘴线粗 0.013w。
+                    // 映射：p → fcNew + K·(p − fcOld)，K=1.5 时逐像素对位（±0.5px @512）：
+                    //   眼心线 0.4531h ✓（232px）、眼距 0.1029w ✓（52.7px）、
+                    //   眼→嘴距 0.105h ✓（53.7px vs 图标 53.5px）、嘴宽 0.131w ✓、嘴粗 0.0195w ✓。
+                    // fcNew = (0.4966, 0.4906)：x=眼心中线 0.4966w，
+                    //   y = 眼心线 0.4531h + 旧设计眼偏移 0.025h×K。
+                    // 实现：内层以原点为轴纯缩放，外层平移补差，避免矩阵复合顺序歧义。
+                    val K_FACE = 1.5f
+                    val fcOldX = 0.515f; val fcOldY = 0.235f
+                    val fcNewX = 0.4966f; val fcNewY = 0.4906f
+                    val boxW = size.width
+                    val boxH = size.height
+                    translate(
+                        (fcNewX - K_FACE * fcOldX) * boxW,
+                        (fcNewY - K_FACE * fcOldY) * boxH
+                    ) {
+                        scale(K_FACE, K_FACE, pivot = Offset.Zero) {
+                            drawFaceExpression(deviceState, naturalMouthOpen, blinkAlpha, emotion, blinkScale, breathScale)
+                        }
+                    }
                 }
             }
 
@@ -532,8 +562,9 @@ private fun DrawScope.drawStateAura(
     if (deviceState == DeviceState.IDLE) return
 
     val w = size.width
-    val cx = w * 0.515f
-    val cy = w * 0.35f
+    // 粒子环绕中心：跟随新头像头部（面屏中心实测 (0.4961, 0.4736)，见 EmotionDisplay 映射注释）
+    val cx = w * 0.496f
+    val cy = w * 0.474f
 
     when (deviceState) {
         DeviceState.LISTENING -> {
@@ -634,9 +665,12 @@ private fun DrawScope.drawFaceExpression(
     val h = size.height
 
     // 面部表情位置（用户微调：右移+上移）
+    // 注：v2.3.13 起本函数在调用侧经 translate+scale(K_FACE=1.5) 映射到新头像面部屏幕，
+    //     此处锚点保持旧设计空间的取值不变，勿单独改动（会破坏映射对位）。
     val faceCenterX = w * 0.515f
     val faceCenterY = h * 0.235f
-    val eyeSpacing = w * 0.04f
+    // 眼距：半间距 0.0686w，经 K=1.5 映射后实际半眼距 0.1029w（52.7px@512），与启动器图标眼距一致
+    val eyeSpacing = w * 0.0686f
     val eyeY = faceCenterY - h * 0.025f
     val mouthY = faceCenterY + h * 0.045f
 
@@ -773,17 +807,19 @@ private fun DrawScope.drawFaceExpression(
     when (emotion.lowercase()) {
         "neutral", "calm" -> {
             // 平静：正常圆眼 + 直线嘴
-            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.022f)
-            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.022f)
+            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.0267f)
+            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.0267f)
+            // 平静嘴型：横条按启动器图标嘴条实测对位（×K_FACE=1.5 后：
+            // 有效半宽 0.0654w×2=67px@512、线粗 0.0195w=10px@512，与图标嘴条 x[222,288] y[281,290] 吻合）
             drawLine(mouthColor.copy(alpha = 0.7f),
-                Offset(faceCenterX - w * 0.02f, mouthY),
-                Offset(faceCenterX + w * 0.02f, mouthY),
-                strokeWidth = thinStroke.width, cap = thinStroke.cap)
+                Offset(faceCenterX - w * 0.0436f, mouthY),
+                Offset(faceCenterX + w * 0.0436f, mouthY),
+                strokeWidth = w * 0.013f, cap = StrokeCap.Round)
         }
         "thinking", "confused" -> {
             // 思考/困惑：圆眼 + 一边眉毛上扬 + 歪嘴
-            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.022f)
-            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.022f)
+            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.0267f)
+            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.0267f)
             // 右眉上扬
             drawLine(eyeColor,
                 Offset(faceCenterX + eyeSpacing - w * 0.02f, eyeY - w * 0.04f),
@@ -823,8 +859,8 @@ private fun DrawScope.drawFaceExpression(
         }
         "silly", "derp" -> {
             // 呆：斗鸡眼 + 吐舌
-            drawEye(faceCenterX - w * 0.005f, eyeY, w * 0.022f)
-            drawEye(faceCenterX + w * 0.005f, eyeY, w * 0.022f)
+            drawEye(faceCenterX - w * 0.005f, eyeY, w * 0.0267f)
+            drawEye(faceCenterX + w * 0.005f, eyeY, w * 0.0267f)
             // 吐舌
             drawOval(Color(0xFFFF6B9D),
                 topLeft = Offset(faceCenterX - w * 0.008f, mouthY),
@@ -849,13 +885,13 @@ private fun DrawScope.drawFaceExpression(
         }
         "embarrassed", "blush" -> {
             // 害羞：圆眼 + 大腮红 + 小嘴
-            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.022f)
-            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.022f)
+            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.0267f)
+            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.0267f)
             // 大腮红
             drawCircle(Color(0xFFFFB6C1).copy(alpha = 0.8f), w * 0.028f,
-                Offset(faceCenterX - eyeSpacing - w * 0.022f, eyeY + w * 0.02f))
+                Offset(faceCenterX - eyeSpacing - w * 0.0267f, eyeY + w * 0.02f))
             drawCircle(Color(0xFFFFB6C1).copy(alpha = 0.8f), w * 0.028f,
-                Offset(faceCenterX + eyeSpacing + w * 0.022f, eyeY + w * 0.02f))
+                Offset(faceCenterX + eyeSpacing + w * 0.0267f, eyeY + w * 0.02f))
             // 小嘴：害羞的微笑
             drawArc(mouthColor.copy(alpha = 0.7f),
                 startAngle = 180f, sweepAngle = 180f, useCenter = false,
@@ -948,8 +984,8 @@ private fun DrawScope.drawFaceExpression(
         }
         "smirk" -> {
             // 坏笑：圆眼 + 单边上扬
-            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.022f)
-            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.022f)
+            drawEye(faceCenterX - eyeSpacing, eyeY, w * 0.0267f)
+            drawEye(faceCenterX + eyeSpacing, eyeY, w * 0.0267f)
             // 坏笑嘴
             drawLine(mouthColor,
                 Offset(faceCenterX - w * 0.025f, mouthY + w * 0.005f),

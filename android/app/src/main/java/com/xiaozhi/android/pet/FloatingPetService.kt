@@ -118,7 +118,7 @@ class FloatingPetService : Service() {
         val dm = resources.displayMetrics
         val screenWidth = dm.widthPixels
         val screenHeight = dm.heightPixels
-        // 3D 宠物尺寸：120dp（缩小触摸范围，模型仍清晰可见）
+        // 宠物悬浮窗尺寸：120dp 正方形（v2.3.13 起渲染启动器头像面片，缩小触摸范围仍清晰可见）
         val petSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, 120f, dm
         ).toInt()
@@ -139,7 +139,7 @@ class FloatingPetService : Service() {
         }
         Log.d(TAG, "showPet: screen=${screenWidth}x${screenHeight}, pet=$petSize, pos=($posX,$posY)")
 
-        // 使用 3D OpenGL 视图
+        // 使用 OpenGL 头像面片视图
         val glView = PetGLSurfaceView(this).apply {
             // 透明背景，让 3D 内容透明叠加在桌面上
             setZOrderOnTop(true)
