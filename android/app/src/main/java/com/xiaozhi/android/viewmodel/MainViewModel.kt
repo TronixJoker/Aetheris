@@ -111,8 +111,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** 本会话已弹过强提醒的远端 versionCode（进程内存级 → 每次启动复弹、同版本会话只弹一次） */
     private var lastForcePromptedRemoteVersionCode = -1
 
-    /** 连续空识别计数（问题触发强提醒：≥2 次 = 疑似踩中旧版已知问题） */
+    /** 连续空识别计数（问题触发强提醒：**连续** ≥2 次 = 疑似踩中旧版已知问题）。
+     *  评审 🔴-1 修复：任一次成功识别（非空 stt）即清零——否则退化为"进程累计"，
+     *  正常用户第 2 次空识别起每次都弹模态升级建议，高频打断对话 */
     private var emptySttStreak = 0
+
+    /** 本会话已弹过「已知问题」升级建议的远端 versionCode（评审 🔴-1 会话级哨兵）：
+     *  与 [lastForcePromptedRemoteVersionCode] 同款语义——同一远端版本一个会话
+     *  （进程生命周期）只弹一次，用户点「稍后再说」后不再被后续触发点反复打断 */
+    private var lastKnownIssuePromptedRemoteVersionCode = -1
 
     // UI state
     private val _deviceState = MutableStateFlow(DeviceState.IDLE)
@@ -501,10 +508,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *  - B2 健康检查放弃自愈（同上）；
      *  - 连续 ≥2 次空识别（疑似全零音频送达服务端的典型症状）。
      * 前提：此前检查过更新且确有新版本（否则无从谈"新版已修复"）。
+     * 评审 🔴-1：加会话级哨兵——同一远端版本每会话至多弹一次，三个触发点共享
+     * 该去重（用户关掉弹窗后不再被反复弹模态打断）。
      */
     private fun nudgeKnownIssueUpdate() {
         val info = _updateInfo.value ?: return
         if (!info.hasUpdate) return
+        // 评审 🔴-1：会话级哨兵——同一远端版本本会话只弹一次（复用 VERSION_GAP 的
+        // shouldPromptAgain 语义），用户点「稍后再说」后不再被后续空识别/自愈放弃反复打断
+        if (!VersionNudgePolicy.shouldPromptAgain(lastKnownIssuePromptedRemoteVersionCode, info.versionCode)) return
+        lastKnownIssuePromptedRemoteVersionCode = info.versionCode
         _forceUpdatePrompt.value = ForceUpdatePrompt(info, ForceUpdatePrompt.Reason.KNOWN_ISSUE)
     }
 
@@ -613,6 +626,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Speech-to-text results
                     val text = data["text"]?.jsonPrimitive?.content ?: ""
                     if (text.isNotEmpty()) {
+                        // 评审 🔴-1 修复：任一次成功识别都打断「连续空识别」计数——
+                        // 否则 streak 退化为进程累计，正常用户第 2 次空识别起每次都弹升级建议
+                        emptySttStreak = 0
                         // （原「声纹标注说话人前缀」已随人物识别功能移除）
                         addLog("用户: $text")
                         // 收到识别结果后切到 THINKING：停止"聆听中"粒子，

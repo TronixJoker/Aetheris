@@ -43,7 +43,10 @@ package com.xiaozhi.android.audio
  *     ≥ [vadCorroborateSpeechMs] 且门仍未开（能量门槛把真人语音挡住了的实证）→
  *     本会话剩余时间进入观察放行——VAD 在说话（[process] 的 vadActive=true）的帧
  *     直接带预滚放行，不再要求 RMS 过门槛。holdoff 窗结束前不武装（回声尾音期
- *     VAD 可能被扬声器声音误触发）。每次 [onListeningStart] 撤销武装，需重新观察。
+ *     VAD 可能被扬声器声音误触发），且佐证累计同样只从出 holdoff 起算
+ *     （评审 🟡-1：holdoff 内 vadActive 直接清零累计——回声持续跨过 holdoff
+ *     时不得用窗内时长凑满 1s 武装，否则回声帧会被当人声放行）。每次
+ *     [onListeningStart] 撤销武装，需重新观察。
  *
  * 构造签名兼容：默认参数 = v2.3.12 固定门槛行为（adaptive=false，既有单测不破坏）；
  * 生产接线用 [adaptive] 工厂方法启用三件套。
@@ -219,9 +222,12 @@ class ListenGatePolicy(
         }
 
         // ===== VAD 佐证观察放行：武装判定 =====
-        // 帧级人声连续 ≥1s 且门仍未开且已出 holdoff（回声尾音期 VAD 不可信）
+        // 帧级人声连续 ≥1s 且门仍未开且已出 holdoff（回声尾音期 VAD 不可信）。
+        // 评审 🟡-1 修复：佐证累计同样只在出 holdoff 后进行——holdoff 内 vadActive
+        // 视为回声嫌疑直接清零，杜绝「回声持续跨过 holdoff」用窗内时长凑满 1s
+        // 武装放行 → 回声帧被当人声放行（幽灵识别）
         if (adaptive && !isOpen) {
-            if (vadActive) {
+            if (vadActive && nowMs >= holdoffUntilMs) {
                 vadSpeechStreakMs += frameMs
             } else {
                 vadSpeechStreakMs = 0L

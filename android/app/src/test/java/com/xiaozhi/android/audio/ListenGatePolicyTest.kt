@@ -510,7 +510,9 @@ class ListenGatePolicyTest {
         assertTrue("VAD 佐证 ≥1s → 武装观察放行", p.isObserveFallbackArmed())
         assertTrue("武装后 VAD 人声帧直接开门", p.isOpen)
         assertTrue("观察放行开门也应记 everOpened（诊断语义一致）", p.everOpened)
-        assertTrue("开门不晚于佐证满足 +1 帧（t≈980）", openedAt in 0..1000L)
+        // 佐证累计只从出 holdoff（快速窗 200ms）后起算（评审 🟡-1 门控）：
+        // 出窗后连续观察满 1s → t≈1180 开门（旧口径 980 + 快速窗 200ms）
+        assertTrue("开门不晚于佐证满足 +1 帧（t≈1180）", openedAt in 0..1200L)
     }
 
     @Test
@@ -518,10 +520,10 @@ class ListenGatePolicyTest {
         val p = newAdaptivePolicy()
         p.onListeningStart(0L, echoRisk = true) // holdoff 600ms
         var t = 0L
-        // TTS 尾音期（0~600ms）VAD 被扬声器误触发：累计 600ms < 1s 不武装
+        // TTS 尾音期（0~600ms）VAD 被扬声器误触发：窗内不累计（评审 🟡-1 门控），不武装
         repeat(30) { feedVad(p, t, 150f, vad = true); t += FRAME_MS }
         assertFalse("holdoff 期内不得武装", p.isObserveFallbackArmed())
-        // 回声停止 → 静音帧重置佐证累计（600ms 白攒）
+        // 回声停止 → 静音帧清零佐证累计（窗内本就未累计）
         repeat(10) { feedVad(p, t, 100f, vad = false); t += FRAME_MS }
         // 此后真人轻声重新累计：需再满 1s 才武装（防回声污染佐证）
         repeat(30) { feedVad(p, t, 150f, vad = true); t += FRAME_MS } // 600ms < 1s
@@ -533,11 +535,35 @@ class ListenGatePolicyTest {
     }
 
     @Test
+    fun `VAD佐证累计不出holdoff - 回声持续跨过holdoff不武装 - 出窗后重新满1秒才武装`() {
+        // 评审 🟡-1 回归锚：回声从 holdoff 窗内（0~600ms）一直持续到窗后 1100ms——
+        // 旧实现窗内 600ms + 窗后 500ms = 1100ms ≥ 1s 会在回声未消时误武装 →
+        // 观察放行把回声帧当人声放行（幽灵识别）。门控后窗内不累计，必须出窗后
+        // 重新连续观察满 1s 才武装
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = true) // holdoff 600ms
+        var t = 0L
+        while (t <= 1100L) { // 回声跨窗持续 vadActive（窗内 600ms + 窗后 500ms）
+            feedVad(p, t, 150f, vad = true)
+            t += FRAME_MS
+        }
+        assertFalse("回声跨过 holdoff 不得武装（窗内时长不计入佐证）", p.isObserveFallbackArmed())
+        assertFalse("未武装则不得开门", p.isOpen)
+        // 出窗后连续 vadActive 满 1s（t=1120 起算）：t≈2100 处武装
+        while (t <= 2100L) {
+            feedVad(p, t, 150f, vad = true)
+            t += FRAME_MS
+        }
+        assertTrue("出窗后重新观察满 1s → 武装（真人轻声兜底不回退）", p.isObserveFallbackArmed())
+    }
+
+    @Test
     fun `观察放行武装跨会话撤销 - 新会话重新观察1秒`() {
         val p = newAdaptivePolicy()
         p.onListeningStart(0L, echoRisk = false)
         var t = 0L
-        repeat(55) { feedVad(p, t, 150f, vad = true); t += FRAME_MS }
+        // 60 帧 = 快速窗 200ms（不累计）+ 出窗后 1s（50 帧满 1s → 武装）
+        repeat(60) { feedVad(p, t, 150f, vad = true); t += FRAME_MS }
         assertTrue(p.isObserveFallbackArmed())
         // 新一轮聆听：武装必须撤销（防陈旧佐证把噪音当人声放行）
         p.onListeningStart(t + 1000L, echoRisk = false)
