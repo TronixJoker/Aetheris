@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.xiaozhi.android.config.ConfigManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -46,6 +47,14 @@ class AudioRecorder(private val context: Context) {
     // preferredSource 为粘性字段：一旦降级，本次会话内后续所有 start() 均使用 MIC 音源。
     @Volatile private var preferredSource: Int = MediaRecorder.AudioSource.VOICE_COMMUNICATION
     @Volatile private var escalatedToMicSource = false
+
+    /**
+     * v2.3.13 §2.2「识别保真」模式开关（每次 start() 从 ConfigManager 同步缓存读取）：
+     * true = 强制普通 MIC 音源 + 不启用硬件 AEC/NS/AGC（原始链路采集）。
+     * @Volatile：写侧 start()（录音 IO 线程），读侧 currentSourceName()/音效分支
+     * （可能主线程诊断 dump），跨线程可见性必须保证。
+     */
+    @Volatile private var faithfulMode = false
     private var consecutiveZeroFrames = 0
 
     // ==================== B2 首帧实证（快速重建 + 轮次上限） ====================
@@ -89,9 +98,17 @@ class AudioRecorder(private val context: Context) {
 
     // ==================== B5 观测埋点只读接口 ====================
 
-    /** 当前实际音源名称（VOICE_COMMUNICATION / MIC / UNINITIALIZED），供诊断 dump */
+    /** 当前实际音源名称（VOICE_COMMUNICATION / MIC / UNINITIALIZED），供诊断 dump。
+     *  FAITHFUL「识别保真」模式下实际建源恒为 MIC，如实回报（方案 §2.2 诊断字段） */
     fun currentSourceName(): String =
-        if (audioRecord == null) "UNINITIALIZED" else MicCapturePolicy.sourceName(preferredSource)
+        when {
+            audioRecord == null -> "UNINITIALIZED"
+            faithfulMode -> MicCapturePolicy.sourceName(MediaRecorder.AudioSource.MIC)
+            else -> MicCapturePolicy.sourceName(preferredSource)
+        }
+
+    /** 当前采集模式名（AUTO / FAITHFUL），供诊断快照 mode 字段（v2.3.13 §2.2） */
+    fun currentSourceModeName(): String = ConfigManager.getMicSourceModeSync().name
 
     /** 自本次 start() 起已读取的帧数（含全零帧） */
     fun framesReadSinceStart(): Int = framesSinceStart
@@ -131,15 +148,23 @@ class AudioRecorder(private val context: Context) {
         }
         if (isRecording) return true
 
+        // v2.3.13 §2.2 音源开关：每次 start() 读取当前采集模式（设置页保存后
+        // 缓存即更新，下一次建 AudioRecord 生效，无需重启 APP）。
+        // AUTO = preferredSource（默认 VOICE_COMMUNICATION，含自动降级粘性）；
+        // FAITHFUL = 强制普通 MIC 原始采集（不启用硬件 AEC/NS/AGC，见下方音效分支）。
+        faithfulMode = ConfigManager.getMicSourceModeSync() == ConfigManager.MicSourceMode.FAITHFUL
+        val effectiveSource =
+            if (faithfulMode) MediaRecorder.AudioSource.MIC else preferredSource
+
         val bufferSize = maxOf(
             AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, FORMAT),
             SAMPLES_PER_FRAME * 2
         )
 
         try {
-            // 使用当前首选音源（默认 VOICE_COMMUNICATION；若曾检测到数字静音已自动降级为 MIC）
+            // 使用当前有效音源（AUTO：VOICE_COMMUNICATION 或降级后的 MIC；FAITHFUL：恒 MIC）
             audioRecord = AudioRecord.Builder()
-                .setAudioSource(preferredSource)
+                .setAudioSource(effectiveSource)
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(FORMAT)
@@ -155,8 +180,10 @@ class AudioRecorder(private val context: Context) {
 
             // 尝试启用回声消除（AEC）、噪声抑制（NS）和自动增益（AGC）
             // 减少小智自己的 TTS 声音被 VAD 误检测为用户说话
-            // 注：仅 VOICE_COMMUNICATION 音源启用；降级为 MIC 后由系统原始链路采集
-            if (preferredSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
+            // 注：仅「AUTO + VOICE_COMMUNICATION」音源启用；降级为 MIC 或
+            // FAITHFUL「识别保真」模式由系统原始链路采集（方案 §2.2：
+            // 硬件语音增强链路会压缩轻声/远场弱信号的频谱细节，识别保真模式下关闭）
+            if (!faithfulMode && preferredSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
                 try {
                     val ar = audioRecord
                     if (ar != null) {
@@ -214,10 +241,12 @@ class AudioRecorder(private val context: Context) {
                         // ===== 音源降级自愈：持续绝对全零 = 音源路由失效 =====
                         // VOICE_COMMUNICATION 在部分机型（无通话上下文时）会永远输出全零，
                         // 此时重启录音/等待都无效，必须换普通 MIC 音源重新建立 AudioRecord。
+                        // FAITHFUL 模式实际音源已是 MIC，无降级语义，跳过该分支
+                        // （继续走 B2 原地重建兜底，保持对管线级失效的恢复能力）
                         if (frameMax == 0) {
                             consecutiveZeroFrames++
                             if (consecutiveZeroFrames >= ZERO_ESCALATE_FRAMES &&
-                                !escalatedToMicSource && isRecording
+                                !escalatedToMicSource && !faithfulMode && isRecording
                             ) {
                                 escalatedToMicSource = true
                                 Log.w(

@@ -69,13 +69,26 @@ class MainActivity : ComponentActivity() {
                     val viewModel: MainViewModel = viewModel()
                     viewModel.init()
 
-                    // 桌面宠物点击触发的冷启动：等连接就绪后自动开始聆听
+                    // 桌面宠物点击触发的冷启动（v2.3.13 §3.1）：启动完成后自动开始聆听，
+                    // 全程无需用户二次点击。
+                    // rememberSaveable 哨兵：同一 intent 只自动聆听一次——Activity 后续
+                    // 重建（转屏/主题切换等）不再重复触发；进程被杀后哨兵归零，
+                    // 宠物点击的真正冷启动路径不受影响。
+                    val petAutoListenFired = androidx.compose.runtime.saveable.rememberSaveable {
+                        androidx.compose.runtime.mutableStateOf(false)
+                    }
                     androidx.compose.runtime.LaunchedEffect(petListenAction) {
-                        if (petListenAction) {
-                            // 给 init() 里的连接一些时间，3秒后尝试聆听
-                            kotlinx.coroutines.delay(3000)
-                            viewModel.startListening()
+                        if (!petListenAction || petAutoListenFired.value) return@LaunchedEffect
+                        petAutoListenFired.value = true
+                        // 轮询连接就绪（250ms 粒度）：连接通常 1s 内建好，就绪即刻开听，
+                        // 不必干等满 3s；3s 仍未就绪则交给 startListening() 内部的
+                        // 强制重连+等待流程（最多再等 15s）接管，保证最终必然触发。
+                        var waited = 0
+                        while (!viewModel.isReadyToListen() && waited < 3000) {
+                            kotlinx.coroutines.delay(250)
+                            waited += 250
                         }
+                        viewModel.startListening()
                     }
 
                     val navController = rememberNavController()

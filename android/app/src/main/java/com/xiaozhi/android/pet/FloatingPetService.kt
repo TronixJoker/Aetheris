@@ -309,7 +309,9 @@ class FloatingPetService : Service() {
             // 冷启动：单次中等震感
             vibrate(longArrayOf(0L, 60L), 80)
             Log.w(TAG, "ViewModel is null, launching MainActivity (cold start)")
-            toast("正在启动小智...")
+            // v2.3.13 §3.1：明确告知「一次点击即可」，启动后 MainActivity 会自动开始聆听，
+            // 用户无需二次操作（SRE 验收：不允许静默无反应）
+            toast("正在启动小智，启动后将自动聆听...")
             val intent = Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 action = MainActivity.ACTION_PET_LISTEN

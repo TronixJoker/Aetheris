@@ -27,6 +27,13 @@ class UpdateManager(private val context: Context) {
         // raw.githubusercontent.com 没有 CDN 缓存，是最可靠的源（虽然国内可能慢，但一定是最新的）
         private const val UPDATE_INFO_URL =
             "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/android-update.json"
+
+        /**
+         * Releases 页浏览器直链（v2.3.13 §4.2.4 检查失败可见化）：
+         * 所有检查源失败时，日志面板给出兜底路径——浏览器打开 Releases 页
+         * 手动下载 APK（页面在 GitHub 域，直连失败率低于 raw/API 源）。
+         */
+        const val BROWSER_RELEASES_URL = "https://github.com/TronixJoker/Aetheris/releases/latest"
         // 备用源：GitHub API（无缓存，可能限流）+ 国内镜像（快，可能有短暂缓存）
         // jsDelivr 是 CDN 缓存源，单独维护（不可靠，仅最后备用）
         // ⚠️ 教训：此列表曾被硬编码索引引用（[4]），删元素后越界 → v2.3.4 启动 3 秒必崩。
@@ -252,6 +259,10 @@ class UpdateManager(private val context: Context) {
     data class UpdateResult(
         val hasUpdate: Boolean = false,
         val versionName: String = "",
+        // v2.3.13 §4.2.1 版本差距分提醒：远端/本地 versionCode（纯 versionName
+        // 无法判差值——"2.3.13"减"2.3.7"不是合法算术）
+        val versionCode: Int = 0,
+        val localVersionCode: Int = 0,
         val changelog: String = "",
         val downloadUrl: String = "",
         // 与 downloadUrl 配套的预期 SHA-256（元数据未提供时为空串）
@@ -389,6 +400,8 @@ class UpdateManager(private val context: Context) {
                 callback(UpdateResult(
                     hasUpdate = true,
                     versionName = finalInfo.versionName,
+                    versionCode = finalInfo.versionCode,
+                    localVersionCode = currentVersionCode,
                     changelog = finalInfo.changelog,
                     downloadUrl = deviceDownload.url,
                     sha256 = deviceDownload.sha256

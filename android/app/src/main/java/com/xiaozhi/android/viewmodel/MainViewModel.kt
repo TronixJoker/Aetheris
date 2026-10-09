@@ -31,6 +31,7 @@ import com.xiaozhi.android.network.ResultWaitWatchdogPolicy
 import com.xiaozhi.android.network.WebSocketManager
 import com.xiaozhi.android.pet.FloatingPetService
 import com.xiaozhi.android.update.UpdateManager
+import com.xiaozhi.android.update.VersionNudgePolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -94,6 +95,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _updateInfo = MutableStateFlow<UpdateManager.UpdateResult?>(null)
     val updateInfo: StateFlow<UpdateManager.UpdateResult?> = _updateInfo
 
+    // ==================== 更新强提醒（v2.3.13 §4.2 版本差距分 + 问题触发） ====================
+    /** 强提醒弹窗状态：非 null = UI 必弹全屏级 AlertDialog（差距 ≥3 启动必弹 / 已知问题触发置顶） */
+    data class ForceUpdatePrompt(
+        val result: UpdateManager.UpdateResult,
+        /** 触发原因：VERSION_GAP=版本差距分；KNOWN_ISSUE=用户遇到新版已修复的问题 */
+        val reason: Reason,
+    ) {
+        enum class Reason { VERSION_GAP, KNOWN_ISSUE }
+    }
+
+    private val _forceUpdatePrompt = MutableStateFlow<ForceUpdatePrompt?>(null)
+    val forceUpdatePrompt: StateFlow<ForceUpdatePrompt?> = _forceUpdatePrompt
+
+    /** 本会话已弹过强提醒的远端 versionCode（进程内存级 → 每次启动复弹、同版本会话只弹一次） */
+    private var lastForcePromptedRemoteVersionCode = -1
+
+    /** 连续空识别计数（问题触发强提醒：≥2 次 = 疑似踩中旧版已知问题） */
+    private var emptySttStreak = 0
+
     // UI state
     private val _deviceState = MutableStateFlow(DeviceState.IDLE)
     val deviceState: StateFlow<DeviceState> = _deviceState
@@ -122,7 +142,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     //    带预滚防丢语音起始、带 keepalive 防 1005 空闲断链、带 holdoff 挡回声尾音。
     // 参数语义与根因详见各类注释。
     private val bargeInPolicy = BargeInPolicy()
-    private val listenGate = ListenGatePolicy()
+    // v2.3.13 §2.1：启用「底噪 EMA 自适应门槛 + silero VAD 佐证」三件套，
+    // 替代固定 RMS 400 的一刀切——安静房轻声整句不再被挡在门外（识别不到的
+    // 主要根因），嘈杂房门槛仍封顶 400（抗噪效果不回退）。参数与语义见策略类注释。
+    private val listenGate = ListenGatePolicy.adaptive()
     // 播放器是否正在实际出声（AudioPlayer.isPlayingState 回放最新值）：
     // 传入 [BargeInPolicy.process] 用于回声余量判定（播放中→更高能量门槛）
     @Volatile
@@ -186,9 +209,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         audioRecorder.onMicSeized = {
             viewModelScope.launch(Dispatchers.Main) {
-                // B2 轮次上限触发：连续 3 轮首帧仍全零 → 不再无限自愈，明确提示并复位
+                // B2 轮次上限触发：连续 3 轮首帧仍全零 → 不再无限自愈，明确提示并复位。
+                // v2.3.13 §3.2：APP 在后台时按「后台权限引导」文案提示（while-in-use
+                // 策略下后台采集被系统静音，「始终允许」比"关闭占用应用"更对症）
                 dumpMicDiagnostics("FIRST_FRAME_SILENT_GIVE_UP")
-                addLog(MicSelfHealPolicy.USER_MESSAGE)
+                addLog(selfHealGiveUpMessage())
+                // §4.2.3 问题触发强提醒：麦克风占用是新版已修复/缓解的问题
+                nudgeKnownIssueUpdate()
                 if (_deviceState.value == DeviceState.LISTENING) {
                     stopListening()
                 }
@@ -306,7 +333,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (audioChannelOpened) {
                             val nowMs = SystemClock.elapsedRealtime()
                             val rms = BargeInPolicy.rmsOf(pcm)
-                            for (frame in listenGate.process(nowMs, rms, pcm)) {
+                            // v2.3.13 §2.1：VAD 佐证双条件——透传 silero 实时语音状态
+                            // 供「观察放行」降级路径使用（能量门槛把真人轻声整句挡住
+                            // 时，VAD 持续检出人声 ≥1s 即可信放行）；检测器未就绪
+                            // （模型加载中）按无 VAD 处理，保持能量主路径不受影响
+                            val vadActive = speechEndDetector?.isVadSpeechActive() ?: false
+                            for (frame in listenGate.process(nowMs, rms, pcm, vadActive)) {
                                 val encoded = opusCodec.encode(frame)
                                 if (encoded != null) {
                                     webSocketManager.sendAudio(encoded)
@@ -415,7 +447,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * 检查更新（手动或自动触发）。
-     * 检测到新版本时填充 [updateInfo]，UI 据此在设置入口显示红点提醒。
+     * 检测到新版本时填充 [updateInfo]，UI 据此在设置入口显示红点提醒；
+     * v2.3.13 §4.2.1：版本差距 ≥3 时额外触发启动强提醒弹窗（同版本会话只弹一次）。
      */
     fun checkForUpdates() {
         if (updateManager.updateState.value == UpdateManager.UpdateState.CHECKING ||
@@ -427,11 +460,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (result.hasUpdate) {
                 addLog("✨ 发现新版本: ${result.versionName}")
                 _updateInfo.value = result
+                // §4.2.1 差距分：差 ≥3 必弹（同版本会话只弹一次，重启后复弹）
+                val nudge = VersionNudgePolicy.decide(result.localVersionCode, result.versionCode)
+                if (nudge == VersionNudgePolicy.NudgeLevel.FORCE_PROMPT &&
+                    VersionNudgePolicy.shouldPromptAgain(lastForcePromptedRemoteVersionCode, result.versionCode)
+                ) {
+                    lastForcePromptedRemoteVersionCode = result.versionCode
+                    _forceUpdatePrompt.value = ForceUpdatePrompt(result, ForceUpdatePrompt.Reason.VERSION_GAP)
+                }
             } else {
                 addLog("✅ 当前已是最新版本")
                 _updateInfo.value = null
+                // §4.2.4 检查失败可见化：全源失败（ERROR）时给出浏览器兜底直链，
+                // 不再让"检查更新"静默失败（老版本用户唯一的自助升级路径）
+                if (updateManager.updateState.value == UpdateManager.UpdateState.ERROR) {
+                    addLog("⚠️ 更新检查失败（网络受限？）。可在浏览器打开下载页手动获取最新版：${UpdateManager.BROWSER_RELEASES_URL}")
+                }
             }
         }
+    }
+
+    /** 关闭强提醒弹窗（「稍后再说」）；同版本本会话不再复弹（lastForcePromptedVersionCode 已记录） */
+    fun dismissForceUpdatePrompt() {
+        _forceUpdatePrompt.value = null
+    }
+
+    /** 强提醒弹窗「立即更新」：按设备 ABI 分包地址直接进入下载流程 */
+    fun downloadLatestUpdate() {
+        val prompt = _forceUpdatePrompt.value ?: return
+        val info = prompt.result
+        addLog("⬇️ 开始下载 v${info.versionName}...")
+        updateManager.downloadUpdate(info.downloadUrl, info.sha256)
+        _forceUpdatePrompt.value = null
+    }
+
+    /**
+     * 问题触发强提醒（§4.2.3）：用户踩中「已知且新版已修复」的问题时置顶弹窗——
+     * 比差距分更精准（不打扰问题用户以外的任何场景）：
+     *  - B2 首帧实证放弃自愈（麦克风被占用的典型终态）；
+     *  - B2 健康检查放弃自愈（同上）；
+     *  - 连续 ≥2 次空识别（疑似全零音频送达服务端的典型症状）。
+     * 前提：此前检查过更新且确有新版本（否则无从谈"新版已修复"）。
+     */
+    private fun nudgeKnownIssueUpdate() {
+        val info = _updateInfo.value ?: return
+        if (!info.hasUpdate) return
+        _forceUpdatePrompt.value = ForceUpdatePrompt(info, ForceUpdatePrompt.Reason.KNOWN_ISSUE)
     }
 
     private suspend fun startConnection() {
@@ -448,7 +522,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isRunning = true
 
         // Initialize Opus codec
-        opusCodec.initialize()
+        // v2.3.13 §2.2 音源开关配套：「识别保真」(FAITHFUL) 模式下编码器切换为
+        // OPUS_APPLICATION_AUDIO + 24kbps（不做语音增强，保真原始频谱）；
+        // AUTO 模式维持 VOIP（与 v2.3.12 一致）。suspend 读取同时刷新 companion
+        // 缓存，供 AudioRecorder.start() 同步消费（两者口径一致，见 ConfigManager）
+        val faithful = configManager.getMicSourceMode() == ConfigManager.MicSourceMode.FAITHFUL
+        opusCodec.initialize(faithful)
         audioPlayer.start()
     }
 
@@ -552,6 +631,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // B5 观测埋点：空 stt = 疑似全零音频送达服务端，dump 快照供用户反馈闭环
                         dumpMicDiagnostics("EMPTY_STT")
                         addLog("⚠️ 未识别到内容，请靠近手机再说一次")
+                        // §4.2.3 问题触发强提醒：连续 ≥2 次空识别 = 疑似踩中
+                        // 「全零音频送达服务端」旧版已知问题（新版 B2 自愈 + 音源
+                        // 开关已大幅缓解）→ 有新版本时置顶提醒升级
+                        emptySttStreak++
+                        if (emptySttStreak >= 2) {
+                            nudgeKnownIssueUpdate()
+                        }
                         Log.w(TAG, "Received empty stt result, restarting capture for self-heal")
                         if (_deviceState.value == DeviceState.LISTENING && audioRecorder.isRunning()) {
                             audioRecorder.stop()
@@ -925,6 +1011,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 连接与音频通道是否就绪、可立即进入聆听（v2.3.13 §3.1 冷启动自动聆听配套）：
+     * WebSocket 已 CONNECTED 且收到 hello 开启音频通道（[audioChannelOpened]）。
+     * 供 MainActivity 冷启动路径轮询——就绪即刻开听，不必干等固定 3s。
+     */
+    fun isReadyToListen(): Boolean =
+        webSocketManager.connectionState.value == WebSocketManager.ConnectionState.CONNECTED &&
+                audioChannelOpened
+
     fun startListening() {
         val wsState = webSocketManager.connectionState.value
         if (wsState != WebSocketManager.ConnectionState.CONNECTED) {
@@ -1105,12 +1200,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *  - 达到上限（连续 3 轮静音）：停止无限自愈，dump 观测埋点，
      *    明确提示"麦克风被占用"，把控制权交还用户。
      */
+    /**
+     * B2 放弃自愈的用户提示文案（v2.3.13 §3.2 宠物后台权限引导）：
+     * APP 在前台 → 「麦克风被占用」原文案；APP 在后台（宠物窗/熄屏场景，
+     * while-in-use 策略下后台采集被系统静音、录到全零）→ 按「始终允许」
+     * 权限引导提示，比"关闭占用应用"更对症。见 [MicSelfHealPolicy].
+     * USER_MESSAGE_BACKGROUND。
+     */
+    private fun selfHealGiveUpMessage(): String {
+        val appForeground =
+            (getApplication<Application>() as? XiaozhiApp)?.isAppInForeground ?: true
+        return if (appForeground) {
+            MicSelfHealPolicy.USER_MESSAGE
+        } else {
+            MicSelfHealPolicy.USER_MESSAGE_BACKGROUND
+        }
+    }
+
     private suspend fun rebuildCaptureAfterSilence() {
         silentRounds++
         if (!MicSelfHealPolicy.shouldAutoRebuild(silentRounds)) {
-            // B2：不再无限自愈
+            // B2：不再无限自愈（v2.3.13 §3.2：后台场景按「始终允许」权限引导提示）
             dumpMicDiagnostics("SELF_HEAL_GIVE_UP")
-            addLog(MicSelfHealPolicy.USER_MESSAGE)
+            addLog(selfHealGiveUpMessage())
+            // §4.2.3 问题触发强提醒：麦克风被占用是新版已修复/缓解的问题
+            nudgeKnownIssueUpdate()
             if (_deviceState.value == DeviceState.LISTENING) {
                 stopListening()
             }
@@ -1197,6 +1311,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 MicDiagnosticsFormatter.Fields(
                     reason = reason,
                     sourceName = audioRecorder.currentSourceName(),
+                    // v2.3.13 §2.2：采集模式入快照（AUTO/FAITHFUL），排障时区分
+                    // 「模式配错」与「设备路由故障」
+                    mode = audioRecorder.currentSourceModeName(),
                     frames = audioRecorder.framesReadSinceStart(),
                     frameMax = audioRecorder.frameMaxSinceStart(),
                     rebuildRounds = audioRecorder.silentRebuildRounds,

@@ -38,6 +38,9 @@ class ListenGatePolicyTest {
     private fun feed(p: ListenGatePolicy, t: Long, rms: Float): List<ShortArray> =
         p.process(t, rms, mkFrame())
 
+    private fun feedVad(p: ListenGatePolicy, t: Long, rms: Float, vad: Boolean): List<ShortArray> =
+        p.process(t, rms, mkFrame(), vad)
+
     // ---------- 基本状态 ----------
 
     @Test
@@ -401,5 +404,143 @@ class ListenGatePolicyTest {
         feed(p, t, NOISE_RMS); t += FRAME_MS
         repeat(2) { feed(p, t, OPEN_RMS); t += FRAME_MS }
         assertFalse("streak 不满 5 不开门", p.isOpen)
+    }
+
+    // ==================== v2.3.13 自适应三件套（架构师方案 §2.1） ====================
+
+    /** 安静房场景：底噪 ~130（warmup 25 帧取中位数） */
+    private fun newAdaptivePolicy() = ListenGatePolicy.adaptive()
+
+    @Test
+    fun `固定模式构造保持v2点3点12行为 - 不消费VAD - 门槛恒400`() {
+        // 向后兼容锚点：默认构造（adaptive=false）下，VAD 佐证不武装、门槛恒定，
+        // 轻声（300 < 400）即使 VAD 持续在说话也永不开门（与旧版逐帧一致）
+        val p = ListenGatePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(60) { feedVad(p, t, NOISE_RMS, vad = true); t += FRAME_MS } // 1.2s 轻声+VAD
+        assertFalse("固定模式不启用观察放行", p.isOpen)
+        assertFalse(p.isObserveFallbackArmed())
+        assertEquals("固定模式门槛恒定", 400f, p.currentOpenThresholdRms())
+    }
+
+    @Test
+    fun `安静房门槛下调到下限250 - 轻声300可开门 - 识别不到的主要受益场景`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        // 35 帧安静底噪（前 10 帧在 200ms 快速窗内不参与 warmup，t=200 起满 25 帧）
+        repeat(35) { feed(p, t, 130f); t += FRAME_MS }
+        assertEquals("warmup 完成：底噪=中位数 130", 130f, p.currentNoiseFloorRms())
+        assertEquals("门槛 = clamp(130×1.8=234, 250, 400) → 下限 250", 250f, p.currentOpenThresholdRms())
+        // 轻声说话 RMS 300：旧门槛 400 挡死 → 新门槛 250 放行（本修复核心场景）
+        var opened = false
+        repeat(6) {
+            val flushed = feed(p, t, 300f)
+            if (flushed.isNotEmpty()) opened = true
+            t += FRAME_MS
+        }
+        assertTrue("轻声 300 ≥ 动态门槛 250 → 开门", opened)
+        assertTrue(p.isOpen)
+        assertTrue("开门回放预滚不丢语音起始", p.everOpened)
+    }
+
+    @Test
+    fun `普通房门槛维持400 - 抗噪效果不回退`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(35) { feed(p, t, 230f); t += FRAME_MS } // 底噪 230
+        assertEquals("门槛 = clamp(230×1.8=414, 250, 400) → 上限封顶 400", 400f, p.currentOpenThresholdRms())
+        // 底噪 300（< 400）持续 4s 依旧关门：环境噪音不上传的治理成果不回退
+        var uploaded = 0
+        repeat(60) { uploaded += feed(p, t, 300f).size; t += FRAME_MS }
+        assertEquals("普通房噪音仍被挡住", 0, uploaded)
+        assertFalse(p.isOpen)
+    }
+
+    @Test
+    fun `嘈杂房底噪很高 - 门槛封顶400不上浮 - 杜绝随噪音失控`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(35) { feed(p, t, 800f); t += FRAME_MS } // 极吵底噪 800
+        assertEquals("800×1.8=1440 → 封顶 400", 400f, p.currentOpenThresholdRms())
+    }
+
+    @Test
+    fun `warmup用中位数初始化 - 单帧瞬态尖峰不污染底噪`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        // 36 帧：第 10 帧混入关门碰撞瞬态（RMS 3000，被门槛排除不进采样），
+        // warmup 有效样本 = 36 - 10（holdoff 期）- 1（尖峰）= 25 → 中位数照常完成
+        repeat(36) {
+            feed(p, t, if (t == 400L) 3000f else 130f)
+            t += FRAME_MS
+        }
+        assertEquals("中位数抗瞬态：底噪仍为 130", 130f, p.currentNoiseFloorRms())
+    }
+
+    @Test
+    fun `超阈帧不参与EMA - 语音不抬高底噪基线`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(35) { feed(p, t, 130f); t += FRAME_MS } // warmup → nf=130
+        // 短促说话 2000（streak 不满 5 不开门，但帧超阈）：不得抬高基线
+        repeat(3) { feed(p, t, 2000f); t += FRAME_MS }
+        feed(p, t, 130f); t += FRAME_MS
+        assertEquals("超阈帧被排除在 EMA 外", 130f, p.currentNoiseFloorRms())
+    }
+
+    @Test
+    fun `VAD佐证观察放行 - 轻声整句被能量门槛挡住1秒后 - VAD持续人声即放行带预滚`() {
+        // 场景：极轻声 RMS 150（< 任何档位门槛），silero VAD 持续检出人声。
+        // 能量路径整句挡住（GATE_NEVER_OPENED 的真机实证）→ 佐证降级路径兜底
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        var openedAt = -1L
+        repeat(60) { // 1.2s 连续轻声 + VAD 人声
+            val flushed = feedVad(p, t, 150f, vad = true)
+            if (flushed.isNotEmpty() && openedAt < 0) openedAt = t
+            t += FRAME_MS
+        }
+        assertTrue("VAD 佐证 ≥1s → 武装观察放行", p.isObserveFallbackArmed())
+        assertTrue("武装后 VAD 人声帧直接开门", p.isOpen)
+        assertTrue("观察放行开门也应记 everOpened（诊断语义一致）", p.everOpened)
+        assertTrue("开门不晚于佐证满足 +1 帧（t≈980）", openedAt in 0..1000L)
+    }
+
+    @Test
+    fun `VAD佐证武装条件 - 回声尾音期不武装 - 静音间隔重置佐证累计`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = true) // holdoff 600ms
+        var t = 0L
+        // TTS 尾音期（0~600ms）VAD 被扬声器误触发：累计 600ms < 1s 不武装
+        repeat(30) { feedVad(p, t, 150f, vad = true); t += FRAME_MS }
+        assertFalse("holdoff 期内不得武装", p.isObserveFallbackArmed())
+        // 回声停止 → 静音帧重置佐证累计（600ms 白攒）
+        repeat(10) { feedVad(p, t, 100f, vad = false); t += FRAME_MS }
+        // 此后真人轻声重新累计：需再满 1s 才武装（防回声污染佐证）
+        repeat(30) { feedVad(p, t, 150f, vad = true); t += FRAME_MS } // 600ms < 1s
+        assertFalse("佐证累计被静音重置后未满 1s，不武装", p.isObserveFallbackArmed())
+        assertFalse(p.isOpen)
+        repeat(20) { feedVad(p, t, 150f, vad = true); t += FRAME_MS } // 凑满 1s
+        assertTrue("静音后重新观察满 1s → 武装放行", p.isObserveFallbackArmed())
+        assertTrue(p.isOpen)
+    }
+
+    @Test
+    fun `观察放行武装跨会话撤销 - 新会话重新观察1秒`() {
+        val p = newAdaptivePolicy()
+        p.onListeningStart(0L, echoRisk = false)
+        var t = 0L
+        repeat(55) { feedVad(p, t, 150f, vad = true); t += FRAME_MS }
+        assertTrue(p.isObserveFallbackArmed())
+        // 新一轮聆听：武装必须撤销（防陈旧佐证把噪音当人声放行）
+        p.onListeningStart(t + 1000L, echoRisk = false)
+        assertFalse("onListeningStart 撤销武装", p.isObserveFallbackArmed())
     }
 }

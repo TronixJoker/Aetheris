@@ -45,6 +45,9 @@ fun SettingsScreen(
     // 语音设置（本地 VAD）
     // （声纹人物识别相关设置项已随该功能彻底移除，不留开关）
     var vadEnabled by remember { mutableStateOf(true) }
+    // v2.3.13 §2.2 音源开关：「识别保真」= 强制普通 MIC 原始采集 + 关硬件 AEC/NS
+    // + OPUS_AUDIO 编码（默认关 = AUTO，与 v2.3.12 行为一致，方案要求默认值不反转）
+    var faithfulMic by remember { mutableStateOf(false) }
 
     val updateManager = remember { UpdateManager(context) }
     val updateState by updateManager.updateState.collectAsStateWithLifecycle()
@@ -71,6 +74,8 @@ fun SettingsScreen(
         clientId = configManager.getClientId()
         activationVersion = configManager.getActivationVersion()
         vadEnabled = configManager.isVadEnabled()
+        // suspend 读取同时刷新 companion 缓存（AudioRecorder.start 同步消费同源值）
+        faithfulMic = configManager.getMicSourceMode() == ConfigManager.MicSourceMode.FAITHFUL
     }
 
     /** 语音设置改动即保存并热应用 */
@@ -78,6 +83,12 @@ fun SettingsScreen(
         scope.launch {
             val configManager = ConfigManager(viewModel.getApplication())
             configManager.setVadEnabled(vadEnabled)
+            // v2.3.13 §2.2：音源模式入库 + 刷新缓存；下次 AudioRecord 建立即生效
+            // （Opus 编码器口径在下次建连时对齐，见 MainViewModel.startConnection）
+            configManager.setMicSourceMode(
+                if (faithfulMic) ConfigManager.MicSourceMode.FAITHFUL
+                else ConfigManager.MicSourceMode.AUTO
+            )
             viewModel.applySpeechSettings()
         }
     }
@@ -406,6 +417,34 @@ fun SettingsScreen(
                             checked = vadEnabled,
                             onCheckedChange = {
                                 vadEnabled = it
+                                saveSpeechSettings()
+                            }
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // v2.3.13 §2.2 音源开关：「识别保真」
+                    // 开 = MIC 原始采集 + 关硬件 AEC/NS + OPUS_AUDIO 编码；
+                    // 关 = AUTO（默认，与 v2.3.12 一致）。轻声/远场识别不到时开启
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("识别保真模式", fontSize = 14.sp)
+                            Text(
+                                "轻声或离得远时识别不到可开启：关闭硬件降噪，" +
+                                    "保留原始声音（适合安静环境，噪音大时建议关闭）",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = faithfulMic,
+                            onCheckedChange = {
+                                faithfulMic = it
                                 saveSpeechSettings()
                             }
                         )

@@ -29,11 +29,11 @@ class MicDiagnosticsFormatterTest {
     // ---------- 字段齐全性（防后续改动丢字段） ----------
 
     @Test
-    fun `快照包含全部九个关键字段`() {
+    fun `快照包含全部十个关键字段`() {
         val snapshot = MicDiagnosticsFormatter.build(sample)
-        // 字段名齐全
+        // 字段名齐全（v2.3.13 §2.2 新增 mode= 采集模式字段，格式一并锁定）
         listOf(
-            "[MicDiag]", "reason=", "src=", "frames=", "frameMax=",
+            "[MicDiag]", "reason=", "src=", "mode=", "frames=", "frameMax=",
             "rebuildRounds=", "healRounds=", "cfgs=", "device=", "android="
         ).forEach { token ->
             assertTrue("快照应包含 $token：\n$snapshot", snapshot.contains(token))
@@ -45,6 +45,7 @@ class MicDiagnosticsFormatterTest {
         val snapshot = MicDiagnosticsFormatter.build(sample)
         assertTrue(snapshot.contains("reason=EMPTY_STT"))
         assertTrue(snapshot.contains("src=VOICE_COMMUNICATION"))
+        assertTrue(snapshot.contains("mode=AUTO"))
         assertTrue(snapshot.contains("frames=25"))
         assertTrue(snapshot.contains("frameMax=0"))
         assertTrue(snapshot.contains("rebuildRounds=1"))

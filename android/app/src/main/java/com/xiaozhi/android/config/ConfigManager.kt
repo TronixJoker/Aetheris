@@ -20,6 +20,27 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 class ConfigManager(private val context: Context) {
 
+    /**
+     * v2.3.13 麦克风采集模式（架构师方案 §2.2 音源「识别保真」开关）。
+     * 注意：放在 class 顶层而非 companion object 内（同 [ApiKey] 的原因，
+     * 避免 Kotlin K2 跨文件访问报 Unresolved reference）。
+     */
+    enum class MicSourceMode {
+        /**
+         * 自动（默认，= v2.3.12 现行为）：系统通话音源（VOICE_COMMUNICATION）+
+         * 硬件 AEC/NS/AGC，抗回声/抗噪最优；持续全零时自动降级普通 MIC（自愈链路保留）。
+         */
+        AUTO,
+
+        /**
+         * 识别保真：普通 MIC 音源原始采集，不启用硬件 AEC/NS/AGC，编码切
+         * OPUS_AUDIO + 24kbps——轻声/远场弱信号频谱细节保留更完整，识别更准；
+         * 代价是自身 TTS 回声抑制变弱（打断误触发风险升高，由 BargeInPolicy 能量
+         * 豁免窗兜底）。默认值不反转，供用户按场景手动切换，后续按 B5 数据决策。
+         */
+        FAITHFUL,
+    }
+
     // ==================== 外部 API URL 配置项 ====================
     // 用 ApiKey 枚举统一管理所有外部 API 的配置项，避免重复样板代码。
     // 注意：放在 class 顶层（而非 companion object 内），否则 Kotlin K2 在跨文件
@@ -126,6 +147,9 @@ class ConfigManager(private val context: Context) {
         // （声纹/人物识别配置项 KEY_SPEAKER_* 已随功能彻底移除，不留开关）
         private val KEY_VAD_ENABLED = booleanPreferencesKey("vad_enabled")
 
+        // v2.3.13 麦克风采集模式（架构师方案 §2.2 音源「识别保真」开关）
+        private val KEY_MIC_SOURCE_MODE = stringPreferencesKey("mic_source_mode")
+
         // 自定义 API 列表的 JSON 序列化器与缓存
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }
         private val customApisCache: MutableList<CustomApi> = mutableListOf()
@@ -139,6 +163,11 @@ class ConfigManager(private val context: Context) {
 
         // 内存缓存：ApiService 在同步代码中读取，避免每次都 runBlocking 拉取 DataStore
         private val apiUrlCache = HashMap<ApiKey, String>()
+
+        // v2.3.13 麦克风采集模式缓存：AudioRecorder.start()（录音线程）与诊断快照
+        // （主线程）同步读取，避免 runBlocking DataStore。suspend 读写路径负责维护。
+        @Volatile
+        private var micSourceModeCache: MicSourceMode? = null
 
         // 全局实例，供 ApiService 静态访问（在 Application.onCreate 中初始化）
         @Volatile
@@ -159,6 +188,16 @@ class ConfigManager(private val context: Context) {
             apiUrlCache[apiKey] = value
             return value
         }
+
+        /**
+         * 同步读取麦克风采集模式（v2.3.13）：供 AudioRecorder.start()（录音 IO 线程）
+         * 与诊断快照（主线程）免 runBlocking 读取。
+         * 缓存未命中（冷启动后首次 start 早于任何 suspend 读取）时回退默认 AUTO——
+         * 与 DataStore 缺省值一致，之后 suspend 路径（ViewModel 初始化/设置保存）
+         * 会立即回填缓存，下一次 start() 起读到真实值。
+         */
+        @JvmStatic
+        fun getMicSourceModeSync(): MicSourceMode = micSourceModeCache ?: MicSourceMode.AUTO
     }
 
     private var _clientId: String? = null
@@ -350,5 +389,25 @@ class ConfigManager(private val context: Context) {
 
     suspend fun setVadEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_VAD_ENABLED] = enabled }
+    }
+
+    // ==================== 麦克风采集模式（v2.3.13 §2.2 音源开关） ====================
+
+    /** 读取麦克风采集模式，默认 AUTO（= v2.3.12 现行为，方案要求默认值不反转）。
+     *  读取同时刷新 companion 缓存，供录音线程/诊断快照同步消费 */
+    suspend fun getMicSourceMode(): MicSourceMode {
+        val mode = (context.dataStore.data.first()[KEY_MIC_SOURCE_MODE])
+            ?.let { stored ->
+                runCatching { MicSourceMode.valueOf(stored) }.getOrNull()
+            }
+            ?: MicSourceMode.AUTO
+        micSourceModeCache = mode
+        return mode
+    }
+
+    /** 保存麦克风采集模式并刷新缓存（下次 AudioRecord 建立即生效，见 AudioRecorder.start） */
+    suspend fun setMicSourceMode(mode: MicSourceMode) {
+        micSourceModeCache = mode
+        context.dataStore.edit { it[KEY_MIC_SOURCE_MODE] = mode.name }
     }
 }

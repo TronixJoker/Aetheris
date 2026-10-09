@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +63,8 @@ fun MainScreen(
     val activationCode by viewModel.activationService.activationCode.collectAsStateWithLifecycle()
     val otaStatus by viewModel.otaStatus.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
+    // v2.3.13 §4.2.2：更新强提醒弹窗状态（版本差距 ≥3 启动必弹 / 已知问题触发置顶弹）
+    val forceUpdatePrompt by viewModel.forceUpdatePrompt.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     // Auto-scroll logs
@@ -308,6 +311,78 @@ fun MainScreen(
         }
     }
 
+    // v2.3.13 §4.2.2：更新强提醒弹窗——非 null 即弹（置顶于主界面任何内容之上）
+    forceUpdatePrompt?.let { prompt ->
+        ForceUpdatePromptDialog(
+            prompt = prompt,
+            onUpdate = { viewModel.downloadLatestUpdate() },
+            onDismiss = { viewModel.dismissForceUpdatePrompt() }
+        )
+    }
+}
+
+/**
+ * 更新强提醒弹窗（v2.3.13 §4.2.2，架构师方案 §4「差距分软强更」的 UI 落点）：
+ *  - VERSION_GAP（差距 ≥3）：启动必弹，明确告知落后幅度——把停留在旧版
+ *    （如 v2.3.7）的用户捞上来，旧版语音问题早已修复；
+ *  - KNOWN_ISSUE：用户刚踩中已知已修问题（麦克风占用/连续空识别）时置顶弹，
+ *    比差距分更精准，不打扰未踩坑用户；
+ * 「立即更新」复用 UpdateManager 的 下载→SHA-256 校验→请求安装 链路，
+ * 下载进度与结果在设置页/日志面板可见，卡住可用浏览器逃生通道——
+ * 弹窗本身不锁死 APP（软强更，不用无条件锁死把用户逼向不可用）。
+ */
+@Composable
+private fun ForceUpdatePromptDialog(
+    prompt: MainViewModel.ForceUpdatePrompt,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isKnownIssue = prompt.reason == MainViewModel.ForceUpdatePrompt.Reason.KNOWN_ISSUE
+    val versionGap = (prompt.result.versionCode - prompt.result.localVersionCode).coerceAtLeast(0)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (isKnownIssue) "你遇到的问题，新版本已修复"
+                else "发现新版本 v${prompt.result.versionName}"
+            )
+        },
+        text = {
+            Column {
+                if (isKnownIssue) {
+                    Text(
+                        "刚刚遇到的问题（麦克风被占用 / 识别异常）在 v${prompt.result.versionName} 已修复，建议立即更新。",
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (prompt.result.changelog.isNotBlank()) {
+                    Text(
+                        prompt.result.changelog,
+                        fontSize = 13.sp,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (versionGap >= 3) {
+                    Text(
+                        "当前版本已落后 $versionGap 个版本，长期不更新会持续遇到已修复的语音问题。",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onUpdate) {
+                Text("立即更新", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("稍后再说") }
+        }
+    )
 }
 
 @Composable

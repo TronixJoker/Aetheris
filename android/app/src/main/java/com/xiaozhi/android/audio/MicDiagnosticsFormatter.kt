@@ -39,13 +39,16 @@ object MicDiagnosticsFormatter {
         val rebuildRounds: Int,
         val healRounds: Int,
         val activeConfigSummary: String,
+        /** v2.3.13 §2.2：采集模式（AUTO / FAITHFUL）——音源开关排障时区分
+         *  「模式配错」与「设备路由故障」，缺省回 AUTO 兼容既有单测构造 */
+        val mode: String = "AUTO",
         val device: String = Build.MANUFACTURER + " " + Build.MODEL,
         val androidVersion: String = Build.VERSION.RELEASE + "(SDK " + Build.VERSION.SDK_INT + ")"
     )
 
     /**
      * 生成一行诊断快照，格式示例：
-     * `[MicDiag] reason=EMPTY_STT | src=VOICE_COMMUNICATION | frames=25 | frameMax=0 |
+     * `[MicDiag] reason=EMPTY_STT | src=VOICE_COMMUNICATION | mode=AUTO | frames=25 | frameMax=0 |
      *  rebuildRounds=1 | healRounds=1 | cfgs=1个会话 [sess=123 src=VOICE_RECOGNITION] |
      *  device=Google Pixel 8 | android=14(SDK 34)`
      *
@@ -54,6 +57,7 @@ object MicDiagnosticsFormatter {
     fun build(f: Fields): String = buildString {
         append("[MicDiag] reason=").append(f.reason)
         append(" | src=").append(f.sourceName)
+        append(" | mode=").append(f.mode)
         append(" | frames=").append(f.frames)
         append(" | frameMax=").append(f.frameMax)
         append(" | rebuildRounds=").append(f.rebuildRounds)

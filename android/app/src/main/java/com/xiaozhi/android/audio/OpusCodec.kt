@@ -13,16 +13,34 @@ class OpusCodec {
         private const val CHANNELS = 1
         private const val FRAME_SIZE = INPUT_SAMPLE_RATE * 20 / 1000 // 320 samples
         private const val MAX_PACKET = 256
+
+        /** 「识别保真」模式的编码码率（bps）：架构师方案 §2.2——AUDIO 应用类型 +
+         *  24kbps，轻声/远场弱信号的频谱细节保留度优于 VOIP 模式的语音增强链路 */
+        private const val FAITHFUL_BITRATE_BPS = 24000
     }
 
     private var encoder: OpusEncoder? = null
     private var decoder: OpusDecoder? = null
 
-    fun initialize() {
+    /**
+     * 初始化编解码器。
+     *
+     * @param faithful 「识别保真」模式（v2.3.13 §2.2 音源开关配套）：
+     *  - true  → OPUS_APPLICATION_AUDIO + 24kbps：不做语音增强（REDIR/去直流/
+     *            预加重等 VOIP 链路处理），最大保留原始频谱，轻声/远场识别更准；
+     *  - false → OPUS_APPLICATION_VOIP（默认，与 v2.3.12 一致）：面向人声优化，
+     *            抗噪回传质量更稳。
+     */
+    fun initialize(faithful: Boolean = false) {
         try {
-            encoder = OpusEncoder(INPUT_SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_VOIP)
+            encoder = if (faithful) {
+                OpusEncoder(INPUT_SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_AUDIO)
+                    .apply { setBitrate(FAITHFUL_BITRATE_BPS) }
+            } else {
+                OpusEncoder(INPUT_SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_VOIP)
+            }
             decoder = OpusDecoder(OUTPUT_SAMPLE_RATE, CHANNELS)
-            Log.i(TAG, "Opus codec initialized (encoder: ${INPUT_SAMPLE_RATE}Hz, decoder: ${OUTPUT_SAMPLE_RATE}Hz)")
+            Log.i(TAG, "Opus codec initialized (mode=${if (faithful) "FAITHFUL/AUDIO-24k" else "AUTO/VOIP"}, encoder: ${INPUT_SAMPLE_RATE}Hz, decoder: ${OUTPUT_SAMPLE_RATE}Hz)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Opus codec: ${e.message}")
             encoder = null
