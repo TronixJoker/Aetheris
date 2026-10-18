@@ -1950,15 +1950,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * [MicDiag] 诊断快照专用写入（与 [addLog] 同款环形缓冲语义，上限同为 100 条）：
+     * [MicDiag] 诊断快照专用写入（淘汰语义与 [addLog] 一致：FIFO 保留最新 100 条）：
      * 写入 [micDiagLogs] 独立缓冲，不进用户可见的连接日志面板。
-     * 线程模型与 addLog 一致：dumpMicDiagnostics 的触发点均已由调用方切换到主线程。
+     * 线程模型（评审 🟡-1 修正）：13 处触发点大多在主线程，但 GATE_NEVER_OPENED
+     * 在 onLocalSpeechEnd 内由 SpeechEndDetector.onSpeechEnd 在 VAD 工作线程直调，
+     * 存在跨线程并发写入——故必须用 update{} 原子读改写（CAS），消除
+     * last-write-wins 丢记录的竞态（旧 addLog 同款竞态为既有遗留，另行跟进）。
      */
     private fun addDiagLog(message: String) {
-        val current = _micDiagLogs.value.toMutableList()
-        current.add(message)
-        if (current.size > 100) current.removeAt(0)
-        _micDiagLogs.value = current
+        _micDiagLogs.update { current -> (current + message).takeLast(100) }
     }
 
     /**
