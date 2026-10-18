@@ -3,6 +3,7 @@ package com.xiaozhi.android.viewmodel
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
@@ -127,6 +128,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _logMessages = MutableStateFlow<List<String>>(emptyList())
     val logMessages: StateFlow<List<String>> = _logMessages
+
+    // [MicDiag] 诊断快照独立缓冲（2026-10-18 用户反馈：诊断快照影响连接日志观感）：
+    // 快照不再写入用户可见的 logMessages，改存此处——诊断记录保留，
+    // 供调试/开发者模式订阅查看（logcat 双通道输出不受影响，排障闭环不中断）
+    private val _micDiagLogs = MutableStateFlow<List<String>>(emptyList())
+    val micDiagLogs: StateFlow<List<String>> = _micDiagLogs
 
     private val _emotion = MutableStateFlow("neutral")
     val emotion: StateFlow<String> = _emotion
@@ -1318,7 +1325,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * B5 观测埋点：出现全零/空 stt 等异常场景时输出诊断快照，形成用户反馈闭环。
      * 内容：触发原因、当前音源、帧统计（帧数/最大绝对值/重建轮数）、
      * 系统活跃采集会话摘要（activeRecordingConfigurations）、设备型号与系统版本。
-     * 同时写 logcat（供用户导出日志）与应用内日志面板（供用户截图反馈）。
+     *
+     * 2026-10-18 用户反馈调整（只隐藏展示，不改采集与自愈）：
+     * 快照不再无条件写入用户可见的连接日志面板，改按 [MicDiagnosticsFormatter.shouldShowInUserPanel]
+     * 判定——release 构建仅走 logcat + [micDiagLogs] 诊断缓冲，debug 构建保留面板展示
+     * 供开发者自测。所有触发点（EMPTY_STT / SOURCE_ESCALATED_TO_MIC / 自愈轮次等）零改动。
      */
     private fun dumpMicDiagnostics(reason: String) {
         try {
@@ -1339,9 +1350,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     androidVersion = "${Build.VERSION.RELEASE}(SDK ${Build.VERSION.SDK_INT})"
                 )
             )
+            // 通道一（不变）：logcat 始终输出，用户导出日志/adb 抓取排障不受影响
             Log.w(TAG, snapshot)
-            // 日志面板同步展示（截断防止面板溢出）
-            addLog("🩺 ${MicDiagnosticsFormatter.forUiLog(snapshot)}")
+            // 通道二（不变）：诊断缓冲始终记录，调试/开发者模式可订阅 micDiagLogs 查看
+            addDiagLog("🩺 ${MicDiagnosticsFormatter.forUiLog(snapshot)}")
+            // 通道三（新增判定）：仅 debug 构建进用户可见的连接日志面板；
+            // release 构建面板不再出现 [MicDiag] 快照（用户反馈影响观感）
+            val debuggable = (getApplication<Application>().applicationInfo.flags
+                    and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            if (MicDiagnosticsFormatter.shouldShowInUserPanel(debuggable)) {
+                addLog("🩺 ${MicDiagnosticsFormatter.forUiLog(snapshot)}")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "B5 诊断 dump 失败: ${e.message}")
         }
@@ -1928,6 +1947,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         current.add(message)
         if (current.size > 100) current.removeAt(0)
         _logMessages.value = current
+    }
+
+    /**
+     * [MicDiag] 诊断快照专用写入（与 [addLog] 同款环形缓冲语义，上限同为 100 条）：
+     * 写入 [micDiagLogs] 独立缓冲，不进用户可见的连接日志面板。
+     * 线程模型与 addLog 一致：dumpMicDiagnostics 的触发点均已由调用方切换到主线程。
+     */
+    private fun addDiagLog(message: String) {
+        val current = _micDiagLogs.value.toMutableList()
+        current.add(message)
+        if (current.size > 100) current.removeAt(0)
+        _micDiagLogs.value = current
     }
 
     /**

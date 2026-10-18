@@ -6,8 +6,9 @@ import android.os.Build
  * B5 观测埋点：诊断快照格式化（纯 Kotlin，可单测）。
  *
  * 触发场景（由 ViewModel 调用）：全零/空 stt、B1 等待超时、自愈轮次等异常时刻，
- * 输出一行结构化快照，写 logcat（用户可导出）+ 应用内日志面板（用户可截图），
+ * 输出一行结构化快照，写 logcat（用户可导出）+ ViewModel 诊断缓冲（调试/开发者模式可查看），
  * 形成"用户反馈 → 根因定位"的闭环。
+ * （2026-10-18 用户反馈调整：快照不再默认进用户可见的连接日志面板，见 [shouldShowInUserPanel]）
  *
  * 快照字段（与架构师方案 B5 对齐）：
  *  - reason      触发原因标记（如 EMPTY_STT / FIRST_FRAME_SILENT_R1 / B1_WAIT_TIMEOUT）
@@ -69,4 +70,18 @@ object MicDiagnosticsFormatter {
 
     /** 日志面板展示用：截断到 [UI_LOG_MAX_LENGTH]（用户截图看关键字段足够） */
     fun forUiLog(snapshot: String): String = snapshot.take(UI_LOG_MAX_LENGTH)
+
+    /**
+     * 用户连接日志面板展示判定（2026-10-18 用户反馈：[MicDiag] 诊断快照影响连接日志观感）。
+     *
+     * 边界约定——只隐藏「展示」，不改「采集与自愈」：
+     *  - release 构建（isDebuggable=false）：快照不再进用户可见的连接日志面板；
+     *  - debug 构建（isDebuggable=true）：保留面板展示，开发者自测可直接观察；
+     *  - 诊断记录本身始终保留：logcat 输出 + ViewModel 侧独立诊断缓冲
+     *    （micDiagLogs），排障链路与自愈触发点零改动。
+     *
+     * 抽为纯函数的原因：面板可见性是排障闭环的约定行为，用单测锁定防止后续改动
+     * 无意中把诊断噪音还给普通用户（或把 debug 自测可见性弄丢）。
+     */
+    fun shouldShowInUserPanel(isDebuggable: Boolean): Boolean = isDebuggable
 }

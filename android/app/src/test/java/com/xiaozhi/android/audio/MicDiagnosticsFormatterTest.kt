@@ -1,6 +1,7 @@
 package com.xiaozhi.android.audio
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -99,5 +100,20 @@ class MicDiagnosticsFormatterTest {
     fun `UI面板 - 短快照不截断`() {
         val short = "[MicDiag] reason=OK"
         assertEquals(short, MicDiagnosticsFormatter.forUiLog(short))
+    }
+
+    // ---------- 用户面板可见性（2026-10-18 用户反馈：诊断快照影响连接日志观感） ----------
+
+    @Test
+    fun `release构建不进用户连接日志面板`() {
+        // release 包（FLAG_DEBUGGABLE 未置位）：[MicDiag] 快照对普通用户隐藏，
+        // 防止后续改动无意中把诊断噪音还给用户面板
+        assertFalse(MicDiagnosticsFormatter.shouldShowInUserPanel(isDebuggable = false))
+    }
+
+    @Test
+    fun `debug构建保留面板展示 - 开发者自测可见`() {
+        // debug 包：面板保留快照展示，排障闭环的开发者自测路径不丢
+        assertTrue(MicDiagnosticsFormatter.shouldShowInUserPanel(isDebuggable = true))
     }
 }
