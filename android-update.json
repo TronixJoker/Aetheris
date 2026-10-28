@@ -1,9 +1,9 @@
 {
- "versionCode": 125,
- "versionName": "2.3.13.2",
- "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.2-arm64.apk",
- "downloadUrlArm32": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.2-arm32.apk",
- "sha256": "c2da036b695fbe43beac672895f4470196f780769660377bb1b00fef6104bf92",
- "sha256Arm32": "244000123033fbdbe3d7a927e38e17570770bead869ad4e4be32ecf3e29f65b3",
- "changelog": "v2.3.13.2 更新\n\n【本次恢复】\n- 应大家反馈，将「软件内主界面机器人形象」和「3D机器人宠物（悬浮窗）形象」全部恢复为更换前的原样：主界面恢复原图与表情，悬浮窗恢复 3D 模型渲染，通知图标恢复原样\n- 启动器（桌面）图标自始未改动，保持不变\n- v2.3.13~v2.3.13.1 的全部功能修复原样保留，不受本次恢复影响\n\n【语音识别提速（v2.3.13，继续保留）】\n- 端点检测收紧：静音线 1.2s→0.8s，弹性宽限收窄，说完话约 1.0~1.1 秒自动停止识别（此前约 1.5~1.6 秒）\n- 口径说明：「1 秒级」指自动停止识别的耗时；停止识别后，回答由服务端完成识别、理解与合成再播报，回答快慢取决于网络与服务端处理，并非 1 秒内给出回答\n- 短句长段不切早不丢句的保护全部保留\n\n【识别不准/识别不到说话（v2.3.13，继续保留）】\n- 音量门槛自适应环境底噪：安静环境自动更灵敏，轻声说话也能识别；嘈杂环境抗噪能力不回退\n- VAD 佐证放行：持续人声被误挡时自动放行\n- 设置页「识别保真」开关：默认关闭（与之前行为一致），轻声/远场识别差时可开启\n\n【桌面宠物（v2.3.13，继续保留）】\n- 冷启动自动聆听：APP 被杀后点宠物，启动完成自动开始聆听，全程无需二次点击\n- 后台权限引导：后台被系统限制麦克风时，文案直接引导设置「始终允许」\n\n【弹窗与回声治理（v2.3.13.1，继续保留）】\n- 遇到已知问题（麦克风被占用/未识别到内容）时的「升级建议」每次运行至多弹一次，不再反复打断\n- 「连续 2 次未识别到内容」恢复正确语义：成功识别一次即重新计数\n- 回声防护收紧：AI 播报尾音期的持续回声不再可能被误当人声放行，杜绝幽灵识别\n\n【更新提醒】\n- 落后 3 个版本及以上：启动必弹更新提醒（同一次运行只弹一次）\n- 遇到新版已修复的问题（麦克风被占用等）：立即弹出更新建议（同一运行至多一次）\n- 不做无条件强更：弹窗不锁死 APP，下载失败可用浏览器直链\n\n【修复保留】聆听态悬挂治理、断线重连治理、麦克风静音自愈、噪音回声治理等 v2.3.7~v2.3.13.2 全部修复均保留\n\n如果 APP 内更新下载失败，请用手机浏览器打开对应直链下载安装：\narm64（多数手机）: https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.2-arm64.apk\narm32（老设备）: https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.2-arm32.apk"
+ "versionCode": 126,
+ "versionName": "2.3.13.3",
+ "downloadUrl": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.3-arm64.apk",
+ "downloadUrlArm32": "https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.3-arm32.apk",
+ "sha256": "aaf793d07fba1645470eeaa7589e90708fdef520c5f39ea75ce1918638e2d2e2",
+ "sha256Arm32": "355bcc5d3338228af3778030def6ba36a9aa01af5f6f458ebc310d270a83ec1e",
+ "changelog": "v2.3.13.3 更新\n\n【本次修复：语音打断与识别（重点）】\n- 修复「AI 播报时无法打断说话」：打断判定时长门槛放宽（480→360ms）、播报开场豁免窗缩短（1.5→1 秒）——正常音量插话「等一下」「别说了」现在可以及时打断；音量门槛与防抖机制不变，误打断治理不回退\n- 修复「说一句话只识别后半句 / 丢结尾几个字」：说完话的停顿判定回调（静音线 0.8→1.0 秒）+ 停顿自愈上限恢复——说话中间有停顿（0.8~1.2 秒）不再被提前切断，说完到出结果约 1.2~1.3 秒，整体仍快于旧版\n- 修复部分机型「每次开口前 1~2 个字丢失」：麦克风音源自动降级结果现在会记住（此前每次新一轮对话都要重新检测，开头一段无音频）\n- 新增回声熔断保护：个别机型麦克风降级后播报回声变响，若出现「AI 被自己的声音反复打断」将自动止损（至多 2 次后抬高打断门槛），并有日志留档\n\n【继续保留】\n- v2.3.13 全部功能：语音识别提速、音量门槛自适应、识别保真开关、冷启动自动聆听、麦克风自愈等\n- v2.3.13.2 机器人形象恢复\n- 聆听态悬挂治理、断线重连治理、噪音回声治理等 v2.3.7 以来全部修复\n\n【更新提醒】\n- 落后 3 个版本及以上：启动必弹更新提醒（同一次运行只弹一次）\n- 遇到新版已修复的问题：立即弹出更新建议（同一运行至多一次）\n\n如果 APP 内更新下载失败，请用手机浏览器打开对应直链下载安装：\narm64（多数手机）: https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.3-arm64.apk\narm32（老设备）: https://gh-proxy.com/https://raw.githubusercontent.com/TronixJoker/Aetheris/main/Aetheris-v2.3.13.3-arm32.apk"
 }
