@@ -6,26 +6,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [EndpointGraceCoordinator] 单元测试（v2.3.9.1 端点收尾状态机 / v2.3.13 端点提速）。
+ * [EndpointGraceCoordinator] 单元测试（v2.3.9.1 端点收尾状态机 / hotfix 125.1 参数回调）。
  *
  * 覆盖规格（群管理员派单「识别结果时间太长」核心修复 + 架构师评审 🔴-1/🔴-2/🟡-1
- * + v2.3.13 方案 §1.1 参数收窄）：
- *  1. 切段 → 生成世代号与宽限计划（首轮 0.8s+300ms=1.1s，v2.3.13 1 秒级提速档）；
- *  2. 帧级续说（句中停顿主路径）：宽限期内检出人声 → 撤销收尾 + 宽限上调，
+ * + hotfix 125.1 §2.1 静音线 0.8→1.0s、宽限上限 300→400 回调）：
+ *  1. 切段 → 生成世代号与宽限计划（首轮 1.0s+300ms=1.3s，停顿保护区间恢复）；
+ *  2. 帧级续说（句中停顿主路径）：宽限期内检出人声 → 撤销收尾 + 宽限上调
+ *     （300+300 封顶 400——v2.3.13 曾封死在 300，自愈形同虚设），
  *     返回被撤销收尾的世代号（调用方凭此补挂尾扫兜底计时，评审 🔴-1）；
- *  3. 尾扫兜底（评审 🔴-1 防线）：撤销后短促噪音不成段 → 尾扫到期静音超 0.7s
+ *  3. 尾扫兜底（评审 🔴-1 防线）：撤销后短促噪音不成段 → 尾扫到期静音超 0.9s
  *     必须收尾（杜绝聆听态永久挂起）；仍在说话 → 顺延；成段/重置 → 作废；
  *  4. 世代核对：宽限内又成段 → 到期核对失败，不得收尾（不切断语义）；
- *  5. 干净收尾：宽限期满无续说 → 核对通过 + 宽限逐轮收敛（下限 200ms，v2.3.13）；
+ *  5. 干净收尾：宽限期满无续说 → 核对通过 + 宽限逐轮收敛（下限 200ms）；
  *  6. CAS 认领（评审 🟡-1）：收尾到期与帧级续说并发时只允许一方放行（消除 TOCTOU）；
  *  7. 会话重置：在途状态清除、世代号单调不归零、宽限学习值保留。
  */
 class EndpointGraceCoordinatorTest {
 
     private companion object {
-        const val VAD_SILENCE_MS = 800L // SpeechEndDetector.silenceDuration（v2.3.13 收窄）
-        const val INITIAL_GRACE_MS = 300L // EndpointGracePolicy 默认首轮宽限（v2.3.13）
-        const val VOICE_QUIET_MS = EndpointGraceCoordinator.TAIL_SCAN_VOICE_QUIET_MS // 尾扫静音门槛 0.7s
+        // hotfix 125.1 §2.1：静音线 0.8→1.0s（与 SpeechEndDetector.DEFAULT_SILENCE_DURATION_S 对齐）
+        const val VAD_SILENCE_MS = 1000L
+        const val INITIAL_GRACE_MS = 300L // EndpointGracePolicy 默认首轮宽限
+        const val MAX_GRACE_MS = 400L // hotfix 125.1：宽限自愈上限 300→400（修自愈被 max==raiseStep 封死）
+        const val VOICE_QUIET_MS = EndpointGraceCoordinator.TAIL_SCAN_VOICE_QUIET_MS // 尾扫静音门槛 0.9s（随静音线同调）
     }
 
     private fun newCoordinator() = EndpointGraceCoordinator(EndpointGracePolicy())
@@ -33,12 +36,12 @@ class EndpointGraceCoordinatorTest {
     // ---------- 1. 切段计划 ----------
 
     @Test
-    fun `首段切段 - 世代1且宽限300ms - 端点总时长1点1秒提速档`() {
+    fun `首段切段 - 世代1且宽限300ms - 端点总时长1点3秒`() {
         val c = newCoordinator()
         val plan = c.onSegmentArrive()
         assertEquals(1L, plan.generation)
         assertEquals(INITIAL_GRACE_MS, plan.graceMs)
-        assertEquals(VAD_SILENCE_MS + plan.graceMs, 1100L)
+        assertEquals(VAD_SILENCE_MS + plan.graceMs, 1300L)
     }
 
     @Test
@@ -59,8 +62,9 @@ class EndpointGraceCoordinatorTest {
         // +100ms 用户续说（VAD 帧级检出人声）→ 撤销在途收尾，
         // 返回被撤销收尾所属世代号（MainViewModel 凭它键控尾扫兜底计时）
         assertEquals("撤销成功应返回在途收尾的世代号", plan.generation, c.onSpeechResumedWithinGrace())
-        // 该用户停顿偏长 → 宽限 300+300 封顶 300（首轮水位即上限）
-        assertEquals(INITIAL_GRACE_MS, c.graceMs)
+        // 该用户停顿偏长 → 宽限 300+300=600 封顶 400（hotfix 125.1：上限 300→400
+        // 之前此处被 max==raiseStep 封死在 300，自愈形同虚设）
+        assertEquals(MAX_GRACE_MS, c.graceMs)
         // 续说撤销后无在途收尾 → 再次信号应为空操作
         assertEquals("无在途收尾时续说信号应返回 -1", -1L, c.onSpeechResumedWithinGrace())
     }
@@ -76,31 +80,31 @@ class EndpointGraceCoordinatorTest {
     // ---------- 3. 尾扫兜底（评审 🔴-1 防线） ----------
 
     @Test
-    fun `尾扫兜底-撤销后短噪音不成段 - 到期静音超0点7s - 必须收尾`() {
+    fun `尾扫兜底-撤销后短噪音不成段 - 到期静音超0点9s - 必须收尾`() {
         // 评审 🔴-1 挂起路径复现：宽限内续说是 <0.4s 的人声型噪音 → 撤销收尾但
         // 不成段、世代不前进 → 用户不再说话。无尾扫时收尾队列已空 → 聆听态
         // 永久挂起；有尾扫时必须兜底收尾（识别结果永不丢失）
         val c = newCoordinator()
         val plan = c.onSegmentArrive()
-        assertEquals(plan.generation, c.onSpeechResumedWithinGrace()) // 噪音触发帧级撤销
-        // 尾扫到期：世代未变 + 距最后说话（噪音结束）已超 0.7s 静音 → FINALIZE
+        assertEquals(plan.generation, c.onSpeechResumedWithinGrace()) // 噪音触发帧级撤销（宽限→400）
+        // 尾扫到期：世代未变 + 距最后说话（噪音结束）已超 0.9s 静音 → FINALIZE
         val decision = c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 100, 0L)
         assertEquals(EndpointGraceCoordinator.TailScanDecision.FINALIZE, decision)
-        // 兜底收尾 = 干净收尾：宽限同规则下调（首轮 300 已被上调封顶，此处 -100）
-        assertEquals(200L, c.graceMs)
+        // 兜底收尾 = 干净收尾：宽限同规则下调（上调后 400，此处 -100 → 300）
+        assertEquals(300L, c.graceMs)
     }
 
     @Test
-    fun `尾扫兜底-到期仍在说话距今不足0点7s - 顺延重挂不收尾 - 宽限不动`() {
+    fun `尾扫兜底-到期仍在说话距今不足0点9s - 顺延重挂不收尾 - 宽限不动`() {
         val c = newCoordinator()
         val plan = c.onSegmentArrive()
-        c.onSpeechResumedWithinGrace() // 撤销 + 补挂尾扫
-        // 尾扫到期时用户仍在连续说话（距最后说话 300ms < 0.7s 门槛）
+        c.onSpeechResumedWithinGrace() // 撤销（宽限→400）+ 补挂尾扫
+        // 尾扫到期时用户仍在连续说话（距最后说话 300ms < 0.9s 门槛）
         val decision = c.onTailScanDue(plan.generation, 300L, 0L)
         assertEquals(EndpointGraceCoordinator.TailScanDecision.POSTPONE, decision)
-        // 顺延重挂不收尾：宽限不得下调（保留学习值），世代不变、pending 保持已清
-        assertEquals(INITIAL_GRACE_MS, c.graceMs)
-        // 顺延后再到期：真正静音超 0.7s → 收尾
+        // 顺延重挂不收尾：宽限不得下调（保留学习值 400），世代不变、pending 保持已清
+        assertEquals(MAX_GRACE_MS, c.graceMs)
+        // 顺延后再到期：真正静音超 0.9s → 收尾
         assertEquals(
             EndpointGraceCoordinator.TailScanDecision.FINALIZE,
             c.onTailScanDue(plan.generation, VOICE_QUIET_MS + 1, 0L)
@@ -155,14 +159,14 @@ class EndpointGraceCoordinatorTest {
     @Test
     fun `段级兜底续说 - 新段到达时在途收尾未撤销 - 补一次宽限上调`() {
         val c = newCoordinator()
-        // 干净收尾一轮 → 宽限已收敛到下限 200ms（v2.3.13）
+        // 干净收尾一轮 → 宽限已收敛到下限 200ms（端点 1.2s）
         repeat(1) { c.onSegmentArrive().let { assertTrue(c.onFinalizeDue(it.generation)) } }
         assertEquals(200L, c.graceMs)
         // segA 切段后在途（pending=false→true，本次不触发上调）
         c.onSegmentArrive()
         // segB 到达时 pending 仍为 true（帧级信号本次未触发的兜底路径）→ 补上调
         val pB = c.onSegmentArrive()
-        assertEquals("段级观测到宽限内续说 → 宽限上调 200+300 封顶 300", INITIAL_GRACE_MS, pB.graceMs)
+        assertEquals("段级观测到宽限内续说 → 宽限上调 200+300=500 封顶 400", MAX_GRACE_MS, pB.graceMs)
         // 兜底上调后旧收尾因世代前进作废、新收尾用新宽限
         assertTrue(c.onFinalizeDue(pB.generation))
     }
@@ -170,32 +174,35 @@ class EndpointGraceCoordinatorTest {
     // ---------- 5. 干净收尾（收敛） ----------
 
     @Test
-    fun `干净收尾 - 宽限一轮收敛到下限200ms - 端点总时长1点0秒`() {
+    fun `干净收尾 - 宽限一轮收敛到下限200ms - 端点总时长1点2秒`() {
         val c = newCoordinator()
         repeat(1) {
             val plan = c.onSegmentArrive()
             assertTrue("宽限期满无续说 → 世代核对通过", c.onFinalizeDue(plan.generation))
         }
         assertEquals(200L, c.graceMs)
-        assertEquals(VAD_SILENCE_MS + c.graceMs, 1000L)
-        // 收敛到下限后继续干净收尾 → 保持 200 不再下降（v2.3.13 收敛下限）
+        assertEquals(VAD_SILENCE_MS + c.graceMs, 1200L)
+        // 收敛到下限后继续干净收尾 → 保持 200 不再下降（收敛下限）
         val plan = c.onSegmentArrive()
         assertTrue(c.onFinalizeDue(plan.generation))
         assertEquals(200L, c.graceMs)
     }
 
     @Test
-    fun `收尾后宽限自动自愈 - 上调到300再逐轮回落 - 伸缩有界`() {
+    fun `收尾后宽限自动自愈 - 上调到400再逐轮回落 - 伸缩有界`() {
         val c = newCoordinator()
         repeat(1) { c.onSegmentArrive().let { assertTrue(c.onFinalizeDue(it.generation)) } }
         assertEquals(200L, c.graceMs)
-        // 误切场景：帧级续说信号 → 上调封顶 300
+        // 误切场景：帧级续说信号 → 上调 200+300 封顶 400（hotfix 125.1 §3.4：
+        // 自愈路径两步到位——v2.3.13 的 300 上限曾把 +300 封死在 300）
         c.onSegmentArrive()
         assertTrue(c.onSpeechResumedWithinGrace() > 0)
-        assertEquals(INITIAL_GRACE_MS, c.graceMs)
-        // 用户说完（干净收尾）→ 重新收敛，始终有界 [200, 300]
+        assertEquals(MAX_GRACE_MS, c.graceMs)
+        // 用户说完（干净收尾）→ 逐轮回落（-100/轮），始终有界 [200, 400]
         repeat(1) { c.onSegmentArrive().let { assertTrue(c.onFinalizeDue(it.generation)) } }
-        assertEquals(200L, c.graceMs)
+        assertEquals("自愈后第一轮干净收尾 -100", 300L, c.graceMs)
+        repeat(1) { c.onSegmentArrive().let { assertTrue(c.onFinalizeDue(it.generation)) } }
+        assertEquals("第二轮回落到下限 200", 200L, c.graceMs)
     }
 
     // ---------- 6. CAS 认领（评审 🟡-1，消除收尾/续说并发 TOCTOU） ----------
@@ -209,7 +216,7 @@ class EndpointGraceCoordinatorTest {
         // 收尾任务（主线程）晚一步到期：修复前 gen 核对通过 + 无条件清 pending
         // → 照发收尾（撤销+收尾双双放行）；修复后 CAS 认领失败 → 必须作废
         assertFalse("pending 已被续说认领，收尾不得照发", c.onFinalizeDue(plan.generation))
-        assertEquals("作废路径不得下调宽限", INITIAL_GRACE_MS, c.graceMs)
+        assertEquals("作废路径不得下调宽限（保持上调后的 400）", MAX_GRACE_MS, c.graceMs)
     }
 
     @Test
@@ -222,26 +229,28 @@ class EndpointGraceCoordinatorTest {
         assertEquals("收尾已认领，续说信号不得再撤销", -1L, c.onSpeechResumedWithinGrace())
     }
 
-    // ---------- 7. 收敛态 + 0.9s 句中停顿（v2.3.13 提速后保护窗验证） ----------
+    // ---------- 7. 收敛态 + 1.1s 句中停顿（hotfix 125.1 核心受益区间验证） ----------
 
     @Test
-    fun `收敛态0点9秒停顿 - 宽限200兜住续说 - 不误切且尾扫让位正常收尾`() {
+    fun `收敛态1点1秒停顿 - 宽限兜住续说 - 不误切且尾扫让位正常收尾`() {
         val c = newCoordinator()
-        // 用户说话不停顿 → 一轮干净收尾收敛到下限 200（端点 1.0s）
+        // 用户说话不停顿 → 一轮干净收尾收敛到下限 200（端点 1.2s）
         c.onSegmentArrive().let { assertTrue(c.onFinalizeDue(it.generation)) }
         assertEquals(200L, c.graceMs)
-        // 下一轮句中停顿 0.9s：0.8s 切段 + 100ms 后续说 → 落在 200ms 宽限窗内
+        // 下一轮句中停顿 1.1s：1.0s 切段 + 100ms 后续说 → 落在自愈上调后的
+        // 400ms 宽限窗内（hotfix 125.1 修复的核心场景：v2.3.13 的 0.8s+300ms
+        // 上限下该停顿被误切收尾，后半句丢失）
         val plan = c.onSegmentArrive()
-        assertEquals(plan.generation, c.onSpeechResumedWithinGrace()) // 兜住，不切断
+        assertEquals(plan.generation, c.onSpeechResumedWithinGrace()) // 兜住，不切断（宽限→400）
         // 撤销后补挂尾扫：用户继续说完 → 新段接管，尾扫让位（VOID）
         val next = c.onSegmentArrive()
         assertEquals(
             EndpointGraceCoordinator.TailScanDecision.VOID,
             c.onTailScanDue(plan.generation, VOICE_QUIET_MS, 0L)
         )
-        // 用户说完 → 正常干净收尾，收敛值保持下限（伸缩有界）
+        // 用户说完 → 正常干净收尾（上调后 400，首轮回落 -100 → 300）
         assertTrue(c.onFinalizeDue(next.generation))
-        assertEquals(200L, c.graceMs)
+        assertEquals(300L, c.graceMs)
     }
 
     // ---------- 8. 会话重置 ----------

@@ -368,9 +368,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         vadDebugCounter++
                         if (vadDebugCounter >= 75) {
                             vadDebugCounter = 0
-                            Log.d(TAG, "Barge-in 观测: rms=$rms baseline=${bargeInPolicy.baseline} playing=$ttsPlaybackActive")
+                            // hotfix 125.1（§1.2 观测最小集）：观测行补降级态 src 标记，
+                            // 供真机门禁②③按日志归因（rms/baseline/src 三元组留档）
+                            Log.d(TAG, "Barge-in 观测: rms=$rms baseline=${bargeInPolicy.baseline} playing=$ttsPlaybackActive src=${if (audioRecorder.isEchoUnguarded()) "MIC(降级/保真)" else "VC(AEC)"}")
                         }
-                        if (bargeInPolicy.process(nowMs, rms, ttsPlaybackActive)) {
+                        // hotfix 125.1（§1.2 接线，Rev 2）：透传「无硬件回声抑制」状态——
+                        // 音源降级态（P1-A 粘性 MIC）/FAITHFUL 模式时打断门槛差异化
+                        // （degradedEchoAbsoluteFactor=1.5）并激活 echoGuard 熔断器；
+                        // AEC 正常态 micDegraded=false，打断参数零变化（误打断治理
+                        // 不回退）。每帧两次 @Volatile 读（纳秒级），无锁无状态。
+                        if (bargeInPolicy.process(
+                                nowMs, rms, ttsPlaybackActive,
+                                micDegraded = audioRecorder.isEchoUnguarded()
+                            )
+                        ) {
+                            // echoGuard TRIP 观测行（§1.2 观测最小集）：熔断发生时
+                            // 输出 ECHO_GUARD_TRIP{rAvg, qFlat, newThreshold} 留档
+                            // （SRE P2 数据锚点 + 真机门禁③ 熔断止损验证依据）
+                            bargeInPolicy.consumeGuardTrip()?.let { trip ->
+                                addLog("🛡 ECHO_GUARD_TRIP rAvg=${"%.0f".format(trip.rAvg)} qFlat=${"%.0f".format(trip.qFlat)} newThreshold=${"%.0f".format(trip.newThreshold)}（回声熔断，本会话打断门槛已抬升）")
+                                Log.i(TAG, "ECHO_GUARD_TRIP{rAvg=${trip.rAvg}, qFlat=${trip.qFlat}, newThreshold=${trip.newThreshold}}")
+                            }
                             addLog("🔊 检测到有效人声（能量+持续时长达标），自动打断")
                             interruptSpeaking()
                         }
@@ -547,6 +565,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // AUTO 模式维持 VOIP（与 v2.3.12 一致）。suspend 读取同时刷新 companion
         // 缓存，供 AudioRecorder.start() 同步消费（两者口径一致，见 ConfigManager）
         val faithful = configManager.getMicSourceMode() == ConfigManager.MicSourceMode.FAITHFUL
+        // P1-A 止血配套：suspend 回读音源降级标志（mic_source_degraded）并回填
+        // companion 缓存——AudioRecorder.start()（录音 IO 线程）靠 Sync 读消费。
+        // 此处位于首次 startListening 之前，保证曾降级设备（VOICE_COMMUNICATION
+        // 持续全零的机型）冷启动后第一句起即直接以 MIC 建源，消除会话开头丢音。
+        // 存量用户无此键 → false，行为不变。
+        configManager.getMicSourceDegraded()
         opusCodec.initialize(faithful)
         audioPlayer.start()
     }

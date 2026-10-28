@@ -150,6 +150,13 @@ class ConfigManager(private val context: Context) {
         // v2.3.13 麦克风采集模式（架构师方案 §2.2 音源「识别保真」开关）
         private val KEY_MIC_SOURCE_MODE = stringPreferencesKey("mic_source_mode")
 
+        // P1-A 止血修复：VOICE_COMMUNICATION→MIC 音源降级标志（跨进程持久化）。
+        // 背景：升级分支触发降级后仅置实例内存标志（escalatedToMicSource），实例重建
+        // （App 重启）后 preferredSource 回落 VOICE_COMMUNICATION，冷启动首个聆听
+        // 会话须重新踩「全零→300ms~1s 检测→降级」的坑，期间音频全零 = 会话开头丢音。
+        // 持久化后：曾降级设备每次 start() 直接以 MIC 建源，不再反复踩坑。
+        private val KEY_MIC_SOURCE_DEGRADED = booleanPreferencesKey("mic_source_degraded")
+
         // 自定义 API 列表的 JSON 序列化器与缓存
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }
         private val customApisCache: MutableList<CustomApi> = mutableListOf()
@@ -168,6 +175,12 @@ class ConfigManager(private val context: Context) {
         // （主线程）同步读取，避免 runBlocking DataStore。suspend 读写路径负责维护。
         @Volatile
         private var micSourceModeCache: MicSourceMode? = null
+
+        // P1-A：音源降级标志缓存（口径同上 micSourceModeCache——录音线程同步读、
+        // suspend 路径维护）。缓存未命中（冷启动后首次 start() 早于任何 suspend
+        // 读取）时回退 false = 与存量用户现状一致，不产生行为反转。
+        @Volatile
+        private var micSourceDegradedCache: Boolean? = null
 
         // 全局实例，供 ApiService 静态访问（在 Application.onCreate 中初始化）
         @Volatile
@@ -198,6 +211,34 @@ class ConfigManager(private val context: Context) {
          */
         @JvmStatic
         fun getMicSourceModeSync(): MicSourceMode = micSourceModeCache ?: MicSourceMode.AUTO
+
+        /**
+         * P1-A：同步读取音源降级标志（供 AudioRecorder.start()——录音 IO 线程免
+         * runBlocking 读取）。缓存未命中回退 false（不劣于存量行为），suspend 读取
+         * 路径（MainViewModel 连接初始化，见 [getMicSourceDegraded]）会立即回填，
+         * 之后 start() 读到真实值。
+         */
+        @JvmStatic
+        fun getMicSourceDegradedSync(): Boolean = micSourceDegradedCache ?: false
+
+        /**
+         * P1-A：静态写桥（供 AudioRecorder 读帧协程降级瞬间调用——它不持有
+         * ConfigManager 实例）。先刷缓存（同步读侧立即生效，DataStore 落盘失败
+         * 也不影响本进程行为），再 best-effort 落盘；无全局实例时仅内存生效。
+         */
+        @JvmStatic
+        suspend fun persistMicSourceDegraded(degraded: Boolean) {
+            micSourceDegradedCache = degraded
+            globalInstance?.let { inst ->
+                runCatching { inst.writeMicSourceDegraded(degraded) }
+                    .onFailure {
+                        android.util.Log.w(
+                            "ConfigManager",
+                            "音源降级标志落盘失败（仅内存生效）: ${it.message}"
+                        )
+                    }
+            }
+        }
     }
 
     private var _clientId: String? = null
@@ -409,5 +450,24 @@ class ConfigManager(private val context: Context) {
     suspend fun setMicSourceMode(mode: MicSourceMode) {
         micSourceModeCache = mode
         context.dataStore.edit { it[KEY_MIC_SOURCE_MODE] = mode.name }
+    }
+
+    // ==================== P1-A：音源降级标志持久化（止血） ====================
+
+    /**
+     * 读取音源降级标志并回填 companion 缓存（suspend，主线程/IO 挂起上下文调用）。
+     * 接线点：MainViewModel 连接初始化（startConnection）——发生在首次 startListening
+     * 之前，保证 AudioRecorder.start() 的同步读能命中真实值。
+     * 缺省 false：DataStore 无此键的存量用户行为不变（不自动降级）。
+     */
+    suspend fun getMicSourceDegraded(): Boolean {
+        val degraded = context.dataStore.data.first()[KEY_MIC_SOURCE_DEGRADED] ?: false
+        micSourceDegradedCache = degraded
+        return degraded
+    }
+
+    /** 落盘降级标志（实例内部实现，统一经 [persistMicSourceDegraded] 静态桥调用） */
+    private suspend fun writeMicSourceDegraded(degraded: Boolean) {
+        context.dataStore.edit { it[KEY_MIC_SOURCE_DEGRADED] = degraded }
     }
 }

@@ -44,7 +44,13 @@ class AudioRecorder(private val context: Context) {
     // ==================== 音源自动降级自愈 ====================
     // 部分机型上 VOICE_COMMUNICATION 音源在无通话场景下会输出"数字静音"（全零帧），
     // 这是"APP 听不到用户说话"的设备级根因之一：重启录音无济于事，必须换用普通 MIC 音源。
-    // preferredSource 为粘性字段：一旦降级，本次会话内后续所有 start() 均使用 MIC 音源。
+    // preferredSource 为粘性字段（P1-A 止血修复后语义完整）：
+    //  - 进程内粘性：一旦降级（升级分支置 MIC），本进程后续所有 start() 均直接以
+    //    MIC 音源建源，不再重踩「全零→检测→降级」的坑（原先只置 escalatedToMicSource
+    //    内存标志、未回写本字段，导致每次 stop()→start() 后降级效果丢失——会话开头
+    //    300ms~1s 数字静音 = 开口前 1~2 个字丢失）；
+    //  - 跨进程粘性：降级同时持久化到 DataStore（mic_source_degraded），新进程首次
+    //    start() 经 ConfigManager.getMicSourceDegradedSync() 恢复（见 start()）。
     @Volatile private var preferredSource: Int = MediaRecorder.AudioSource.VOICE_COMMUNICATION
     @Volatile private var escalatedToMicSource = false
 
@@ -110,6 +116,20 @@ class AudioRecorder(private val context: Context) {
     /** 当前采集模式名（AUTO / FAITHFUL），供诊断快照 mode 字段（v2.3.13 §2.2） */
     fun currentSourceModeName(): String = ConfigManager.getMicSourceModeSync().name
 
+    /**
+     * hotfix 125.1（§1.2 接线，Rev 2 恢复）：麦克风链路当前是否「无硬件回声抑制」
+     * （= MIC 直采，覆盖两类路径：P1-A 音源降级态 preferredSource 已粘性为 MIC；
+     * FAITHFUL 保真模式建源恒为 MIC——两者回声均无硬件抑制，语义统一）。
+     * 供 MainViewModel SPEAKING 分支透传给 BargeInPolicy.process 的 micDegraded
+     * 参数——降级态打断门槛差异化（degradedEchoAbsoluteFactor=1.5）与
+     * echoGuard 熔断器仅在该态激活；AEC 正常态（VOICE_COMMUNICATION）返回
+     * false，打断参数零变化（误打断治理不回退）。
+     * @Volatile 成员（preferredSource/faithfulMode）保证跨线程可见（SPEAKING 分支
+     * 在 pcmData.collect 协程、字段写侧在 start()/降级分支的录音协程）。
+     */
+    fun isEchoUnguarded(): Boolean =
+        faithfulMode || preferredSource == MediaRecorder.AudioSource.MIC
+
     /** 自本次 start() 起已读取的帧数（含全零帧） */
     fun framesReadSinceStart(): Int = framesSinceStart
 
@@ -153,6 +173,24 @@ class AudioRecorder(private val context: Context) {
         // AUTO = preferredSource（默认 VOICE_COMMUNICATION，含自动降级粘性）；
         // FAITHFUL = 强制普通 MIC 原始采集（不启用硬件 AEC/NS/AGC，见下方音效分支）。
         faithfulMode = ConfigManager.getMicSourceModeSync() == ConfigManager.MicSourceMode.FAITHFUL
+
+        // P1-A 止血配套（读侧）：恢复跨进程持久化的音源降级标志。
+        // 场景：升级分支已把降级结果写入 DataStore（mic_source_degraded），本实例
+        // 若是新进程（App 重启后重建 AudioRecorder），内存 preferredSource 归零回落
+        // VOICE_COMMUNICATION——这里从 companion 缓存恢复，冷启动首个会话即直接以
+        // MIC 建源，跳过「全零→检测→降级」的会话开头丢音窗口。
+        // 仅在未降级过的实例上恢复（已降级则 preferredSource 已是 MIC，幂等）；
+        // FAITHFUL 模式恒 MIC 无降级语义，跳过。
+        // 缓存未命中（极端时序：首次 start() 早于 MainViewModel 连接初始化的
+        // suspend 回填）时 Sync 返回 false——行为与存量版本一致，之后回填生效。
+        if (!faithfulMode && !escalatedToMicSource &&
+            ConfigManager.getMicSourceDegradedSync()
+        ) {
+            preferredSource = MediaRecorder.AudioSource.MIC
+            escalatedToMicSource = true
+            Log.i(TAG, "检测到历史音源降级记录（mic_source_degraded），本次直接以 MIC 音源建源")
+        }
+
         val effectiveSource =
             if (faithfulMode) MediaRecorder.AudioSource.MIC else preferredSource
 
@@ -249,10 +287,38 @@ class AudioRecorder(private val context: Context) {
                                 !escalatedToMicSource && !faithfulMode && isRecording
                             ) {
                                 escalatedToMicSource = true
+                                // P1-A 止血核心（🔴 修复）：补上粘性赋值 + 跨进程持久化。
+                                // 原缺陷：此处只置 escalatedToMicSource 内存标志，从未回写
+                                // preferredSource——而 start() 建源读的恰是 preferredSource
+                                // （并不读该标志）。结果：本次录音会话内靠
+                                // recreateWithMicSource() 重建得以用 MIC，但下一次
+                                // stop()→start()（每次聆听会话/打断重启/自动续听都会发生）
+                                // 又用 VOICE_COMMUNICATION 建源，重新踩「全零 300ms~1s
+                                // 检测→再降级」的坑——每个新会话开头一段音频全是数字静音，
+                                // 等于丢掉开口的前 1~2 个字（会话开头丢音根因）。
+                                // 修复两层：
+                                //  1) 进程内粘性：preferredSource 置为 MIC，类头「粘性字段」
+                                //     注释自此名副其实，后续所有 start() 直接以 MIC 建源；
+                                //  2) 跨进程持久化：DataStore 落 mic_source_degraded 标志，
+                                //     App 重启后 start() 经 getMicSourceDegradedSync() 恢复，
+                                //     冷启动首个会话也不再踩坑。落盘 best-effort（scope 异步、
+                                //     失败仅记日志）——内存赋值已即时生效，写失败只影响
+                                //     「重启后」的恢复，不损本次会话行为。
+                                preferredSource = MediaRecorder.AudioSource.MIC
+                                scope.launch {
+                                    runCatching { ConfigManager.persistMicSourceDegraded(true) }
+                                        .onFailure {
+                                            Log.w(
+                                                TAG,
+                                                "音源降级标志持久化失败（不影响本次会话）: ${it.message}"
+                                            )
+                                        }
+                                }
                                 Log.w(
                                     TAG,
                                     "数字静音持续 ${ZERO_ESCALATE_FRAMES * FRAME_SIZE_MS}ms，" +
-                                        "VOICE_COMMUNICATION 路由失效，自动降级为 MIC 音源重试"
+                                        "VOICE_COMMUNICATION 路由失效，自动降级为 MIC 音源重试" +
+                                        "（已置粘性音源并持久化，后续会话直接以 MIC 建源）"
                                 )
                                 if (recreateWithMicSource()) {
                                     consecutiveZeroFrames = 0

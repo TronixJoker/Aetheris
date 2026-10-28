@@ -65,17 +65,19 @@ class EndpointGraceCoordinator(private val grace: EndpointGracePolicy) {
     val graceMs: Long get() = grace.graceMs
 
     companion object {
-        /** 尾扫兜底计时的静音基准：对齐 [SpeechEndDetector].silenceDuration 的 0.8s 切段静音线
-         *  （v2.3.13 由 1.2s 同步收窄；语义：若宽限内续说是真语音，成段要到「其结束后 0.8s」
-         *  才发生——尾扫至少等够同一静音线，让正常成段路径优先接管，尾扫只兜
-         *  「不成段的短噪音」的底） */
-        const val TAIL_SCAN_SILENCE_MS = 800L
+        /** 尾扫兜底计时的静音基准：对齐 [SpeechEndDetector].silenceDuration 的 1.0s 切段静音线
+         *  （hotfix 125.1 §2.1：随静音线 0.8→1.0s 同步回调；语义：若宽限内续说是
+         *  真语音，成段要到「其结束后 1.0s」才发生——尾扫至少等够同一静音线，让
+         *  正常成段路径优先接管，尾扫只兜「不成段的短噪音」的底。一致性由单测
+         *  断言 TAIL_SCAN_SILENCE_MS == SpeechEndDetector.DEFAULT_SILENCE_DURATION_S×1000
+         *  锁定（§3.4，防 v2.3.13 同款错位复发）） */
+        const val TAIL_SCAN_SILENCE_MS = 1000L
 
         /** 尾扫到期允许收尾的最小「距最后检出人声」间隔（评审 🔴-1 指定 >1s 口径；
-         *  v2.3.13 随静音线 1.2→0.8s 同比例收窄至 0.7s，仍严格大于切段静音线 0.8s
-         *  减去一个 VAD 窗的余量，说话中 lastVoice 持续刷新 → 恒判定 POSTPONE 顺延，
-         *  不伤连续语流） */
-        const val TAIL_SCAN_VOICE_QUIET_MS = 700L
+         *  hotfix 125.1 §2.1：随静音线 0.8→1.0s 同比例回调 700→900ms，仍严格大于
+         *  切段静音线 1.0s 减去一个 VAD 窗的余量，说话中 lastVoice 持续刷新 →
+         *  恒判定 POSTPONE 顺延，不伤连续语流） */
+        const val TAIL_SCAN_VOICE_QUIET_MS = 900L
 
         /**
          * 尾扫链总时长上限（v2.3.11 修复「恒顺延无上限」）：自本世代尾扫链首次挂载

@@ -31,7 +31,8 @@ class SpeechEndDetector(private val context: Context) {
      * v2.3.9.1 端点自适应配套：切段后的弹性宽限期（v2.3.13 起为 200-300ms）内
      * 用户继续说（句中停顿）时，靠本信号以帧级延迟（~32ms/窗）感知续说、撤销在途收尾，
      * 句中停顿不再切断。
-     * 注意：段级回调 [onSpeechEnd] 要求新段成段（≥0.4s 语音 + 0.8s 静音），宽限窗内
+     * 注意：段级回调 [onSpeechEnd] 要求新段成段（≥0.4s 语音 + 1.0s 静音，hotfix
+     * 125.1 口径），宽限窗内
      * 必然赶不上，因此「宽限内续说」的感知必须走本帧级信号。
      * 噪音口径与成段判定同源：同一 silero VAD、同一 [threshold] 置信度门槛，
      * 本信号的灵敏度与 v2.3.9 的成段判定一致，不额外放宽噪音容忍度。
@@ -74,14 +75,19 @@ class SpeechEndDetector(private val context: Context) {
     var threshold = 0.55f
 
     /** 判定切段前的静音时长（秒），启动前设置。
-     *  v2.3.9：1.2s → 1.6s（固定收紧）——治理了句中停顿误切，但让所有用户
-     *  「说完→出结果」无条件变慢 0.4s（v2.3.9 用户反馈回归）。
-     *  v2.3.9.1：回调到 1.2s，仅保留"切段"职责；1.2s 处的句中停顿改由
-     *  [EndpointGracePolicy] 的弹性宽限兜住（切段后宽限期内续说不停机）。
-     *  v2.3.13：1.2s → 0.8s（架构师方案 §1.1 端点提速主延迟项，-0.4s）——
-     *  句中停顿的误切保护全部交由弹性宽限（200-300ms 自适应）+ 帧级续说撤销 +
-     *  尾扫兜底三层机制承担，端点总时长压缩至 1.0~1.1s（「说完→停止识别」1 秒级） */
-    var silenceDuration = 0.8f
+     *  演进史（供参数追溯，现行口径见本 KDoc 末段）：
+     *  v2.3.9 1.2→1.6s（固定收紧，治句中停顿误切，代价「说完→出结果」无条件 +0.4s）
+     *  → v2.3.9.1 回调 1.2s（切段职责归静音线，句中停顿兜底改由弹性宽限承接）
+     *  → v2.3.13 收窄 0.8s（端点提速，误切保护改由「弹性宽限+帧级续说撤销+尾扫」
+     *  三层机制承担——后被证实对 0.8~1.2s 停顿人群误切率不可接受，即 hotfix 125.1
+     *  的回归对象）
+     *  hotfix 125.1（v2.3.13.3，定稿 §2.1）：0.8s → 1.0s——「说 5 个字丢后 2 个字」
+     *  主诉根因的回调（宽限自愈上限曾被 maxGraceMs=300 封死无法兜住）；回调后端点
+     *  总时长 = 1.0s + 宽限 [200,400]ms → 首轮 1.3s / 收敛 1.2s / 自愈上限 1.4s，
+     *  仍优于 v2.3.12 的 1.6s（满足 §2.1 验收项⑤），停顿保护区间恢复 [1.0s, 1.4s]。
+     *  尾扫两参数已同步对齐（[EndpointGraceCoordinator.TAIL_SCAN_SILENCE_MS]，
+     *  一致性由单测锁定——防 v2.3.13 只改其一的错位复发）。 */
+    var silenceDuration = DEFAULT_SILENCE_DURATION_S
 
     /**
      * VAD 实例的跨线程同步锁（评审 🟡-1）：
@@ -158,6 +164,14 @@ class SpeechEndDetector(private val context: Context) {
     private var lastVoiceActiveAtMs = 0L
 
     companion object {
+        /**
+         * [silenceDuration] 的出厂默认值（秒）。独立常量供
+         * [EndpointGraceCoordinator.TAIL_SCAN_SILENCE_MS] 的一致性防错位单测断言
+         * （hotfix 125.1 §3.4）——两处若被独立改动（历史上 v2.3.13 只改了其中
+         * 一处的同款事故），单测立即失败。
+         */
+        const val DEFAULT_SILENCE_DURATION_S = 1.0f
+
         private const val TAG = "SpeechEndDetector"
         private const val SAMPLE_RATE = 16000
         // silero VAD 固定窗口（16kHz 下 512 样本 ≈ 32ms）
